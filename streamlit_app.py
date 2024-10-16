@@ -242,7 +242,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.logo("http://103.215.229.81:5001/assets/logo_pasker-wB1So2HS.png", size="large")
+img_logo = Image.open('logo_pasker.png')
+st.logo(img_logo, size="large")
 
 
 if not st.session_state.access_token:

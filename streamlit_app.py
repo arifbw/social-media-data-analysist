@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.express as px
 from PIL import Image
 import re
-import json
 import requests
 from openpyxl import load_workbook
+from stqdm import stqdm
 
 
 # Backend URLs
@@ -27,7 +27,7 @@ def login(username, password):
         st.error("Login failed. Please check your credentials.")
 
 
-#fungsi-fungsi get daa
+#fungsi-fungsi get data
 @st.cache_data
 def get_data_stats_all_medsos():
     response = requests.get(base_url + "/stats-source/456", headers={"token": st.session_state.access_token})
@@ -45,6 +45,12 @@ def get_data_stats_all_sentiment():
         return response.json()
     else: 
         return []
+
+
+@st.cache_data
+def kalkulasi_banyak_row(uploaded_file):
+    df = pd.read_excel(uploaded_file)
+    return len(df)
 
 def classify_job_category(caption, categories):
         contains_others = bool(re.search("Lainnya", caption, re.IGNORECASE))
@@ -112,6 +118,7 @@ def map_location(caption, location_df):
     return 'Unknown'
 
 job_categories = None
+uploaded_file = None
 
 def categorize_job_post(caption):
     caption = caption.lower()  # Convert caption to lowercase for case-insensitive matching
@@ -254,6 +261,9 @@ if not st.session_state.access_token:
                 width: 100%;
                 align-self: flex-end;
             }
+            .stMainMenu{
+                display: none !important;
+            }
         </style>
     """, unsafe_allow_html=True)
     
@@ -292,6 +302,9 @@ else:
                 width: 270px !important;
                 background: white;
             }
+            .stMainMenu, .stAppDeployButton{
+                display: none !important;
+            } 
         </style>
     """, unsafe_allow_html=True)
 
@@ -324,6 +337,13 @@ else:
         
         if(is_excel):
             uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+        
+        if(uploaded_file):
+            total_rows = kalkulasi_banyak_row(uploaded_file)
+            
+            limit_data = st.slider(
+                "Limit Data (by range):", 0, total_rows, (0, round(total_rows / 3))
+            )
 
         left, middle, right = st.columns(3)
         
@@ -343,10 +363,13 @@ else:
     tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
 
     if(eksekusi):
+        stqdm.pandas()
         # If a file has been uploaded
         if is_excel and uploaded_file is not None:
             # Read the Excel file into a DataFrame
-            df = pd.read_excel(uploaded_file)
+            un_df = pd.read_excel(uploaded_file)
+            # df = un_df.head(limit_data)
+            df = un_df.iloc[limit_data[0]:limit_data[1]]
 
             with tab1:
                 with st.spinner('Memproses data, mohon tunggu sebentar ...'):
@@ -376,43 +399,42 @@ else:
                         st.plotly_chart(fig_heatmap)
 
             with tab2:
-                with st.spinner('Memproses data, mohon tunggu sebentar ...'):
-                    kd = get_kamus_data()
+                kd = get_kamus_data()
 
-                    # st.write(kamus_data[0])
+                # st.write(kamus_data[0])
 
-                    # df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), kd[0]))
+                # df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), kd[0]))
 
-                    for item in kd:
-                        df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), item))
+                for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
+                    df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
 
-                    # Show the updated data with job category classification
-                    # st.write("### Data with Classified Job Categories")
+                # Show the updated data with job category classification
+                # st.write("### Data with Classified Job Categories")
 
-                    formatted_array = [item["kamus_data"] for item in kd]
-                    st.dataframe(df[['Konten', 'Url'] + formatted_array])
-                    
-                    col1, col2 = st.columns(2, gap="large")
+                formatted_array = [item["kamus_data"] for item in kd]
+                st.dataframe(df[['Konten', 'Url'] + formatted_array])
+                
+                col1, col2 = st.columns(2, gap="large")
 
-                    with col1:
-                        for item in formatted_array:
-                            category_count = df[item].explode().value_counts().reset_index()
-                            category_count.columns = [item, 'Count']
-                            category_count_filtered = category_count[category_count[item] != 'others']
+                with col1:
+                    for item in formatted_array:
+                        category_count = df[item].explode().value_counts().reset_index()
+                        category_count.columns = [item, 'Count']
+                        category_count_filtered = category_count[category_count[item] != 'others']
 
-                            # Pie chart
-                            fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
-                            st.plotly_chart(fig_pie_category)
+                        # Pie chart
+                        fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
+                        st.plotly_chart(fig_pie_category)
 
-                    with col2:
-                        for item in formatted_array:
-                            category_count = df[item].explode().value_counts().reset_index()
-                            category_count.columns = [item, 'Count']
-                            category_count_filtered = category_count[category_count[item] != 'others']
-                            
-                            # Horizontal bar 
-                            fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
-                            st.plotly_chart(fig_bar_category)
+                with col2:
+                    for item in formatted_array:
+                        category_count = df[item].explode().value_counts().reset_index()
+                        category_count.columns = [item, 'Count']
+                        category_count_filtered = category_count[category_count[item] != 'others']
+                        
+                        # Horizontal bar 
+                        fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
+                        st.plotly_chart(fig_bar_category)
         else:
             st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")
     else:

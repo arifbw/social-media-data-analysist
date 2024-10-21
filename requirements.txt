@@ -3,3 +3,4 @@ openpyxl
 plotly
 pandas
 stqdm
+streamlit-condition-tree

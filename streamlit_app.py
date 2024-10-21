@@ -6,7 +6,11 @@ import re
 import requests
 from openpyxl import load_workbook
 from stqdm import stqdm
+from io import BytesIO
+from datetime import datetime
+from streamlit_condition_tree import condition_tree, config_from_dataframe
 
+# from streamlit_gsheets import GSheetsConnection
 
 # Backend URLs
 base_url = "https://api.kurasi.media"
@@ -49,7 +53,7 @@ def get_data_stats_all_sentiment():
 
 @st.cache_data
 def kalkulasi_banyak_row(uploaded_file):
-    df = pd.read_excel(uploaded_file)
+    df = pd.read_excel(uploaded_file, sheet_name="Media Sosial")
     return len(df)
 
 def classify_job_category(caption, categories):
@@ -120,6 +124,7 @@ def map_location(caption, location_df):
 job_categories = None
 uploaded_file = None
 
+keywords = None
 def categorize_job_post(caption):
     caption = caption.lower()  # Convert caption to lowercase for case-insensitive matching
     caption = re.sub(r'[^\w\s]', '', caption)  # Remove punctuation
@@ -134,7 +139,6 @@ def categorize_job_post(caption):
                     return name
 
     return 'uncategorized'
-
 
 def get_kamus_data():
     kamus_data_xls = pd.ExcelFile('kamus_data.xlsx')
@@ -205,7 +209,6 @@ def add_filter_component(df):
 
     return df
 
-
 def setup_data_stats_and_sentiment(data, data2):
     st.sidebar.markdown(f"""
         <style>
@@ -242,6 +245,23 @@ def setup_data_stats_and_sentiment(data, data2):
         </ul>
     """, unsafe_allow_html=True)
 
+def generate_url(base_url, from_date, to_date, date_type="date", sort="date"):
+    source = "ZmFjZWJvb2ssdHdpdHRlcixpbnN0YWdyYW0sdGlrdG9rLHlvdXR1YmUsZm9ydW0sYmxvZyxsaW5rZWRpbg=="
+    now = datetime.now()
+    cur_time = now.strftime("%Y%m%d%H%M%S")
+
+    return f"{base_url}?from={from_date}%2000:00:00&to={to_date}%2023:59:59&date_type={date_type}&sort={sort}&sources={source}&time={cur_time}"
+
+dynamic_url = None
+
+@st.dialog("Download disini :")
+def show_dynamic_url(url):
+    st.write(f"{url}")
+
+@st.dialog("Upload New Data :")
+def update_kamus_data():
+    test = st.file_uploader("Upload Kamus Data :", type=["xlsx", "xls"])
+
 # init page
 st.set_page_config(
     page_title="Social Media Data Analysist",
@@ -252,6 +272,71 @@ st.set_page_config(
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
+def eksekusi_excel(tab1, tab2, df):
+    with tab1:
+        with st.spinner('Memproses data, mohon tunggu sebentar ...'):
+            df = add_filter_component(df)
+            st.dataframe(df)
+
+            col1, col2 = st.columns(2, gap="large")
+
+            with col1:
+                # Bar chart of Sentimen distribution
+                st.write("### Sentimen Distribution")
+                sentimen_count = df['Sentimen'].value_counts().reset_index()
+                sentimen_count.columns = ['Sentimen', 'Count']
+                fig_sentimen = px.bar(sentimen_count, x='Sentimen', y='Count', color='Sentimen')
+                st.plotly_chart(fig_sentimen)
+
+                st.write("### Engagement by Akun/Judul")
+                engagement_by_account = df.groupby('Akun/Judul').agg({'Engagement':'sum'}).reset_index().sort_values(by='Engagement', ascending=False)
+                fig_account = px.bar(engagement_by_account, x='Akun/Judul', y='Engagement', title='Top Accounts by Engagement')
+                st.plotly_chart(fig_account)
+            
+            with col2:
+                # Heatmap for Sentiment and Emotion
+                st.write("### Sentiment vs Emotion Heatmap")
+                heatmap_data = df.pivot_table(index='Sentimen', columns='Emotion', aggfunc='size', fill_value=0)
+                fig_heatmap = px.imshow(heatmap_data, text_auto=True, title='Sentiment vs Emotion Heatmap')
+                st.plotly_chart(fig_heatmap)
+
+    with tab2:
+        kd = get_kamus_data()
+
+        # st.write(kamus_data[0])
+
+        # df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), kd[0]))
+
+        for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
+            df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
+
+        # Show the updated data with job category classification
+        # st.write("### Data with Classified Job Categories")
+
+        formatted_array = [item["kamus_data"] for item in kd]
+        st.dataframe(df[['Konten', 'Url'] + formatted_array])
+        
+        col1, col2 = st.columns(2, gap="large")
+
+        with col1:
+            for item in formatted_array:
+                category_count = df[item].explode().value_counts().reset_index()
+                category_count.columns = [item, 'Count']
+                category_count_filtered = category_count[category_count[item] != 'others']
+
+                # Pie chart
+                fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
+                st.plotly_chart(fig_pie_category)
+
+        with col2:
+            for item in formatted_array:
+                category_count = df[item].explode().value_counts().reset_index()
+                category_count.columns = [item, 'Count']
+                category_count_filtered = category_count[category_count[item] != 'others']
+                
+                # Horizontal bar 
+                fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
+                st.plotly_chart(fig_bar_category)
 
 if not st.session_state.access_token:
     st.markdown("""
@@ -287,7 +372,7 @@ if not st.session_state.access_token:
             if login_button:
                 login(username, password)
 else:
-    image = Image.open('ilustrasi.png')
+    image = Image.open('ilustrasi_old.png')
     st.markdown("""
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
         <style>
@@ -313,31 +398,198 @@ else:
     st.subheader("Dashboard for Insight & Semantic Data Analysist", divider="gray")
 
     # logo = st.image("logo.gif", caption="Sunrise by the mountains")
-    col1, col2 = st.columns(2, vertical_alignment="center", gap="large")
+    col1, col2 = st.columns(2, gap="large")
 
     with col1:
         # st.image("https://cliply.co/wp-content/uploads/2019/12/371903520_SOCIAL_ICONS_TRANSPARENT_400px.gif", width=100)
         st.image(image, use_column_width=True)
+        
+        
+        st.header('Data Filtering :')
+        config = {
+            'fields': {
+                'UUID': {
+                    'label': 'UUID',
+                    'type': 'text'
+                },
+                'No': {
+                    'label': 'No',
+                    'type': 'number'
+                },
+                'Tanggal_Publikasi': {
+                    'label': 'Tanggal Publikasi',
+                    'type': 'date'
+                },
+                'Jam_Publikasi': {
+                    'label': 'Jam Publikasi',
+                    'type': 'time'
+                },
+                'Tanggal_Tersimpan': {
+                    'label': 'Tanggal Tersimpan',
+                    'type': 'datetime'
+                },
+                'Topik': {
+                    'label': 'Topik',
+                    'type': 'text'
+                },
+                'Akun_Judul': {
+                    'label': 'Akun/Judul',
+                    'type': 'text'
+                },
+                'Konten': {
+                    'label': 'Konten',
+                    'type': 'text'
+                },
+                'Dihapus': {
+                    'label': 'Dihapus (1 Jika Ya / 0 Jika Tidak)',
+                    'type': 'boolean'
+                },
+                'Sentimen': {
+                    'label': 'Sentimen',
+                    'type': 'text'
+                },
+                'Emotion': {
+                    'label': 'Emotion',
+                    'type': 'text'
+                },
+                'Sumber': {
+                    'label': 'Sumber',
+                    'type': 'text'
+                },
+                'Url': {
+                    'label': 'Url',
+                    'type': 'text'
+                },
+                'Followers': {
+                    'label': 'Followers',
+                    'type': 'number'
+                },
+                'Likes': {
+                    'label': 'Likes',
+                    'type': 'number'
+                },
+                'Retweets': {
+                    'label': 'Retweets',
+                    'type': 'number'
+                },
+                'ESMR': {
+                    'label': 'ESMR',
+                    'type': 'text'
+                },
+                'View': {
+                    'label': 'View',
+                    'type': 'number'
+                },
+                'Engagement': {
+                    'label': 'Engagement',
+                    'type': 'number'
+                },
+                'Location': {
+                    'label': 'Location',
+                    'type': 'text'
+                },
+                'Jenis_Akun': {
+                    'label': 'Jenis Akun',
+                    'type': 'select'
+                },
+                'Jenis_Unggahan': {
+                    'label': 'Jenis Unggahan',
+                    'type': 'select'
+                },
+                'Is_Validated': {
+                    'label': 'Is Validated',
+                    'type': 'bool'
+                }
+            }
+        }
+
+        init_tree = {
+            "type": "group",
+            "children": [
+                {
+                    "type": "rule",
+                    "properties": {
+                        "fieldSrc": "field",
+                        "field": None,
+                        "operator": None,
+                        "value": [],
+                        "valueSrc": []
+                    }
+                },
+                {
+                "type": "rule",
+                "properties": {
+                    "fieldSrc": "field",
+                    "field": None,
+                    "operator": None,
+                    "value": [],
+                    "valueSrc": []
+                }
+                },
+                {
+                "type": "rule",
+                "properties": {
+                    "fieldSrc": "field",
+                    "field": None,
+                    "operator": None,
+                    "value": [],
+                    "valueSrc": []
+                }
+                }
+            ]
+        }
+
+
+        return_val = condition_tree(
+            config,
+            always_show_buttons=True,
+            return_type='sql',
+            placeholder='Belum ada rule filtering. Silahkan tambahkan rule baru.'
+        )
 
     with col2:
         workbook = load_workbook('kamus_data.xlsx', read_only=True)
-        st.header('Data Preparation')
+        st.header('Data Preparation :')
 
         visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
 
         keywords = st.multiselect(
             "Kamus Data Analisa Semantik :",
             visible_sheets,
-            visible_sheets[:5]
+            visible_sheets
         )
 
-        data_source = st.radio("Data Source to Analyze :", ["***Local (File Excel)***", "***Remote (Real Time)***"], horizontal=True)
+        
+        left, middle, right = st.columns(3)
 
-        is_excel = data_source=="***Local (File Excel)***"
+        with right:
+            if st.button("Update Kamus Data"):
+                update_kamus_data()
+
+        #connection
+        # url_sheet = "https://docs.google.com/spreadsheets/d/192owtZ8J33nrYonrVKGIdcowxZJz8CObuol_ATr26w8/edit?usp=sharing"
+        # conn = st.connection("gsheets", type=GSheetsConnection)
+        # data = conn.query('SELECT * FROM "Tunjangan" LIMIT 10', spreadsheet=url_sheet)
+        # st.dataframe(data)
+
+        data_source = st.radio("Data Source to Analyze :", ["***Local (From Excel)***", "***Remote (From Server)***"], horizontal=True)
+
+        is_excel = data_source=="***Local (From Excel)***"
         
         if(is_excel):
             uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
-        
+        else:
+            # Base URL
+            base_url = "https://test.com/new-export/456"
+
+            # Date slider range component
+            date_range = st.slider(
+                "Select date range", 
+                value=(datetime(2024, 10, 11), datetime(2024, 10, 17)),
+                format="YYYY-MM-DD"
+            )
+            from_date, to_date = date_range
+
         if(uploaded_file):
             total_rows = kalkulasi_banyak_row(uploaded_file)
             
@@ -349,8 +601,12 @@ else:
         
         if(is_excel is not True):
             with middle:
-                st.button("Export Data", type="secondary", icon="📄", use_container_width=True)
+                if st.button("Export Data", type="secondary", icon="📥", use_container_width=True):
+                    base_url = "https://api.kurasi.media/new-export/456"
 
+                    dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
+
+                    show_dynamic_url(dynamic_url)
         with right:
             eksekusi = st.button("Proses Data", type="primary", icon="▶️", use_container_width=True)
 
@@ -360,81 +616,38 @@ else:
 
     setup_data_stats_and_sentiment(data_stats, data_sentiment)
 
+    
+    st.header('Result Proses :')
+
     tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
 
     if(eksekusi):
         stqdm.pandas()
         # If a file has been uploaded
         if is_excel and uploaded_file is not None:
-            # Read the Excel file into a DataFrame
-            un_df = pd.read_excel(uploaded_file)
-            # df = un_df.head(limit_data)
-            df = un_df.iloc[limit_data[0]:limit_data[1]]
+            with st.spinner('Memproses data, mohon tunggu sebentar ...'):
+                # Read the Excel file into a DataFrame
+                un_df = pd.read_excel(uploaded_file, sheet_name="Media Sosial")
+                # df = un_df.head(limit_data)
+                df = un_df.iloc[limit_data[0]:limit_data[1]]
 
-            with tab1:
-                with st.spinner('Memproses data, mohon tunggu sebentar ...'):
-                    df = add_filter_component(df)
-                    st.dataframe(df)
+            eksekusi_excel(tab1, tab2, df)
+        elif is_excel is not True and uploaded_file is None:
+            base_url = "https://api.kurasi.media/new-export/456"
+            dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
 
-                    col1, col2 = st.columns(2, gap="large")
+            try:
+                with st.spinner('Mengambil data ke Server, mohon tunggu sebentar ...'):
+                    response = requests.get(dynamic_url)
+                    response.raise_for_status()
 
-                    with col1:
-                        # Bar chart of Sentimen distribution
-                        st.write("### Sentimen Distribution")
-                        sentimen_count = df['Sentimen'].value_counts().reset_index()
-                        sentimen_count.columns = ['Sentimen', 'Count']
-                        fig_sentimen = px.bar(sentimen_count, x='Sentimen', y='Count', color='Sentimen')
-                        st.plotly_chart(fig_sentimen)
+                    file_bytes = BytesIO(response.content)
+                    df = pd.read_excel(file_bytes, sheet_name="Media Sosial")
 
-                        st.write("### Engagement by Akun/Judul")
-                        engagement_by_account = df.groupby('Akun/Judul').agg({'Engagement':'sum'}).reset_index().sort_values(by='Engagement', ascending=False)
-                        fig_account = px.bar(engagement_by_account, x='Akun/Judul', y='Engagement', title='Top Accounts by Engagement')
-                        st.plotly_chart(fig_account)
-                    
-                    with col2:
-                        # Heatmap for Sentiment and Emotion
-                        st.write("### Sentiment vs Emotion Heatmap")
-                        heatmap_data = df.pivot_table(index='Sentimen', columns='Emotion', aggfunc='size', fill_value=0)
-                        fig_heatmap = px.imshow(heatmap_data, text_auto=True, title='Sentiment vs Emotion Heatmap')
-                        st.plotly_chart(fig_heatmap)
+                eksekusi_excel(tab1, tab2, df)
 
-            with tab2:
-                kd = get_kamus_data()
-
-                # st.write(kamus_data[0])
-
-                # df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), kd[0]))
-
-                for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
-                    df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
-
-                # Show the updated data with job category classification
-                # st.write("### Data with Classified Job Categories")
-
-                formatted_array = [item["kamus_data"] for item in kd]
-                st.dataframe(df[['Konten', 'Url'] + formatted_array])
-                
-                col1, col2 = st.columns(2, gap="large")
-
-                with col1:
-                    for item in formatted_array:
-                        category_count = df[item].explode().value_counts().reset_index()
-                        category_count.columns = [item, 'Count']
-                        category_count_filtered = category_count[category_count[item] != 'others']
-
-                        # Pie chart
-                        fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
-                        st.plotly_chart(fig_pie_category)
-
-                with col2:
-                    for item in formatted_array:
-                        category_count = df[item].explode().value_counts().reset_index()
-                        category_count.columns = [item, 'Count']
-                        category_count_filtered = category_count[category_count[item] != 'others']
-                        
-                        # Horizontal bar 
-                        fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
-                        st.plotly_chart(fig_bar_category)
+            except requests.exceptions.RequestException as e:
+                st.error(f"Error: {e}")
         else:
             st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")
     else:

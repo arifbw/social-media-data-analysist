@@ -224,6 +224,13 @@ def setup_data_stats_and_sentiment(data, data2):
                 color: #FF3333;
                 font-weight: 900 !important;
             }}
+                        
+            iframe[title="streamlit_condition_tree.streamlit_condition_tree"]{{
+                border: 3px #cccccc dashed;
+                border-radius: 10px;
+                padding: 20px 20px;
+                box-sizing: content-box;
+            }}
         </style>
         <h3 class="title_sidebar">Sosmed Data</h3>
         <ul class="custom-list">
@@ -260,7 +267,17 @@ def show_dynamic_url(url):
 
 @st.dialog("Upload New Data :")
 def update_kamus_data():
-    test = st.file_uploader("Upload Kamus Data :", type=["xlsx", "xls"])
+    data_baru = st.file_uploader("Upload Kamus Data :", type=["xlsx", "xls"])
+
+    left, middle, right = st.columns(3)
+
+    with right:
+       if st.button("Lanjutkan", use_container_width=True, disabled=not data_baru):
+           # Save the uploaded file to replace the existing one
+            with open("kamus_data.xlsx", "wb") as f:
+                f.write(data_baru.getbuffer())
+                st.rerun()
+
 
 # init page
 st.set_page_config(
@@ -549,7 +566,7 @@ else:
 
     with col2:
         workbook = load_workbook('kamus_data.xlsx', read_only=True)
-        st.header('Data Preparation :')
+        st.header('Data Classification :')
 
         visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
 
@@ -560,10 +577,22 @@ else:
         )
 
         
-        left, middle, right = st.columns(3)
+        left, right = st.columns(2)
 
         with right:
-            if st.button("Update Kamus Data"):
+            popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True)
+
+            with open("kamus_data.xlsx", "rb") as file:
+                popover.download_button(
+                    label="Unduh Kamus Data",
+                    data=file,
+                    file_name="kamus_data.xlsx",
+                    use_container_width=True,
+                    icon=":material/download:",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+
+            if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
                 update_kamus_data()
 
         #connection
@@ -571,6 +600,25 @@ else:
         # conn = st.connection("gsheets", type=GSheetsConnection)
         # data = conn.query('SELECT * FROM "Tunjangan" LIMIT 10', spreadsheet=url_sheet)
         # st.dataframe(data)
+        st.header('Data Cleansing :')
+
+        left, right = st.columns(2)
+        with left:
+            st.toggle("Hapus Post Duplikat")
+            st.toggle("Hapus karakter spesial")
+            st.toggle("Hapus post bukan lowongan")
+
+        with right:
+            st.toggle("Aktifkan Bot Detector")
+            st.toggle("Aktifkan Hoax Detector")
+            st.toggle("Hapus Akun Bot / Hoax")
+        
+        st.text("")
+        left, right = st.columns(2)
+        with right:
+           st.button("Test Data Cleansing", icon=":material/play_circle:", use_container_width=True)
+
+        st.header('Data Source :')
 
         data_source = st.radio("Data Source to Analyze :", ["***Local (From Excel)***", "***Remote (From Server)***"], horizontal=True)
 
@@ -600,15 +648,25 @@ else:
         left, middle, right = st.columns(3)
         
         if(is_excel is not True):
-            with middle:
+            with right:
                 if st.button("Export Data", type="secondary", icon="📥", use_container_width=True):
                     base_url = "https://api.kurasi.media/new-export/456"
 
                     dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
 
                     show_dynamic_url(dynamic_url)
-        with right:
-            eksekusi = st.button("Proses Data", type="primary", icon="▶️", use_container_width=True)
+    
+    st.text("")
+    st.text("")
+    st.text("")
+
+    left, middle, middle2, right = st.columns(4) 
+
+    with middle2:
+        st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True)
+
+    with right:
+        eksekusi = st.button("Proses Data Scraping", type="primary", icon="▶️", use_container_width=True)
 
     st.sidebar.image("https://cliply.co/wp-content/uploads/2019/12/371903520_SOCIAL_ICONS_TRANSPARENT_400px.gif", width=100)
     data_stats = get_data_stats_all_medsos()
@@ -622,6 +680,7 @@ else:
     tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
 
     if(eksekusi):
+        st.toast("Memulai Proses Data Scrapping, Mohon cek Progress di section Result Proses.")
         stqdm.pandas()
         # If a file has been uploaded
         if is_excel and uploaded_file is not None:

@@ -289,6 +289,21 @@ img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
 
+def convert_df_to_excel(df):
+    # Create a copy of the DataFrame to avoid modifying the original
+    df_copy = df.copy()
+    
+    # Convert any column with list values to comma-separated strings
+    for col in df_copy.columns:
+        df_copy[col] = df_copy[col].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+    
+    # Write the DataFrame to an Excel file in memory
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_copy.to_excel(writer, index=False, sheet_name='Sheet1')
+    output.seek(0)
+    return output
+
 def eksekusi_excel2(df, kd):
 
     # for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
@@ -296,6 +311,22 @@ def eksekusi_excel2(df, kd):
 
     formatted_array = [item["kamus_data"] for item in kd]
     st.dataframe(df[['Konten', 'Url'] + formatted_array])
+
+    
+    col1, col2, col3, col4 = st.columns(4, gap="large")
+
+    with col4:
+        st.download_button(
+            label="Download Excel file",
+            use_container_width=True,
+            type="primary",
+            icon=":material/download:",
+            data=convert_df_to_excel(df[['Konten', 'Url'] + formatted_array]),
+            file_name='hasil_proses.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    return
     
     col1, col2 = st.columns(2, gap="large")
 

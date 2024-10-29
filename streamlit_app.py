@@ -9,6 +9,7 @@ from stqdm import stqdm
 from io import BytesIO
 from datetime import datetime
 from streamlit_condition_tree import condition_tree, config_from_dataframe
+import time
 
 # from streamlit_gsheets import GSheetsConnection
 
@@ -70,10 +71,6 @@ def classify_job_category(caption, categories):
         return 'Lainnya'
 
 def classify_job_category2(caption, categories):
-    """
-    Classifies the caption into one or more job categories based on threshold words.
-    If no threshold word matches, the category is set to 'others'.
-    """
     matched_categories = []
 
     # Iterate through each category
@@ -86,16 +83,18 @@ def classify_job_category2(caption, categories):
                 matched_categories.append(category["name"])
                 break  # Move to the next category once a match is found
 
-    # If no categories matched, classify as 'others'
     if not matched_categories:
-        matched_categories.append("others")
+        matched_categories.append("tdk_ada_informasi")
 
-    # If the content includes the "others" category, assign the first match unless it's the only category
-    if "others" in matched_categories and len(matched_categories) > 1:
-        matched_categories.remove("others")
+    if "tdk_ada_informasi" in matched_categories and len(matched_categories) > 1:
+        matched_categories.remove("tdk_ada_informasi")
 
     return matched_categories
 
+def process_chunk(chunk, kd):
+    for item in stqdm(kd, desc="Analyze content semantic ...", backend=False, frontend=True):
+        chunk[item["kamus_data"]] = chunk['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
+    return chunk
 
 def clean_location_name(name):
     """
@@ -289,6 +288,38 @@ st.set_page_config(
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
+
+def eksekusi_excel2(df, kd):
+
+    # for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
+        # df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
+
+    formatted_array = [item["kamus_data"] for item in kd]
+    st.dataframe(df[['Konten', 'Url'] + formatted_array])
+    
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
+        for item in formatted_array:
+            category_count = df[item].explode().value_counts().reset_index()
+            category_count.columns = [item, 'Count']
+            category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
+
+            # Pie chart
+            fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
+            st.plotly_chart(fig_pie_category)
+
+    with col2:
+        for item in formatted_array:
+            category_count = df[item].explode().value_counts().reset_index()
+            category_count.columns = [item, 'Count']
+            category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
+            
+            # Horizontal bar 
+            fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
+            st.plotly_chart(fig_bar_category)
+
+
 def eksekusi_excel(tab1, tab2, df):
     with tab1:
         with st.spinner('Memproses data, mohon tunggu sebentar ...'):
@@ -320,15 +351,9 @@ def eksekusi_excel(tab1, tab2, df):
     with tab2:
         kd = get_kamus_data()
 
-        # st.write(kamus_data[0])
-
-        # df[item["kamus_data"]] = df['Konten'].apply(lambda x: classify_job_category2(str(x), kd[0]))
-
         for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
             df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
 
-        # Show the updated data with job category classification
-        # st.write("### Data with Classified Job Categories")
 
         formatted_array = [item["kamus_data"] for item in kd]
         st.dataframe(df[['Konten', 'Url'] + formatted_array])
@@ -339,7 +364,7 @@ def eksekusi_excel(tab1, tab2, df):
             for item in formatted_array:
                 category_count = df[item].explode().value_counts().reset_index()
                 category_count.columns = [item, 'Count']
-                category_count_filtered = category_count[category_count[item] != 'others']
+                category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
 
                 # Pie chart
                 fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
@@ -349,7 +374,7 @@ def eksekusi_excel(tab1, tab2, df):
             for item in formatted_array:
                 category_count = df[item].explode().value_counts().reset_index()
                 category_count.columns = [item, 'Count']
-                category_count_filtered = category_count[category_count[item] != 'others']
+                category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
                 
                 # Horizontal bar 
                 fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
@@ -616,7 +641,8 @@ else:
         st.text("")
         left, right = st.columns(2)
         with right:
-           st.button("Test Data Cleansing", icon=":material/play_circle:", use_container_width=True)
+           if st.button("Test Data Cleansing", icon=":material/play_circle:", use_container_width=True):
+               st.write("pages/jupyter.py")
 
         st.header('Data Source :')
 
@@ -631,19 +657,21 @@ else:
             base_url = "https://test.com/new-export/456"
 
             # Date slider range component
-            date_range = st.slider(
-                "Select date range", 
-                value=(datetime(2024, 10, 11), datetime(2024, 10, 17)),
-                format="YYYY-MM-DD"
-            )
-            from_date, to_date = date_range
-
-        if(uploaded_file):
-            total_rows = kalkulasi_banyak_row(uploaded_file)
+            date_range = st.date_input('Start Date  - End Date :', [])
             
-            limit_data = st.slider(
-                "Limit Data (by range):", 0, total_rows, (0, round(total_rows / 3))
-            )
+            if(len(date_range) > 1):
+                from_date, to_date = date_range
+            else:
+                from_date, to_date = [datetime.now(), datetime.now()]
+
+            
+        chunksize = st.slider(
+            "Total Row Per Process :",
+            value=500,
+            min_value=100,
+            max_value=2000,
+            step=100
+        )
 
         left, middle, right = st.columns(3)
         
@@ -677,20 +705,53 @@ else:
     
     st.header('Result Proses :')
 
-    tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
+    # tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
 
     if(eksekusi):
         st.toast("Memulai Proses Data Scrapping, Mohon cek Progress di section Result Proses.")
         stqdm.pandas()
         # If a file has been uploaded
         if is_excel and uploaded_file is not None:
-            with st.spinner('Memproses data, mohon tunggu sebentar ...'):
-                # Read the Excel file into a DataFrame
-                un_df = pd.read_excel(uploaded_file, sheet_name="Media Sosial")
-                # df = un_df.head(limit_data)
-                df = un_df.iloc[limit_data[0]:limit_data[1]]
+            kd = get_kamus_data()
 
-            eksekusi_excel(tab1, tab2, df)
+            # Read the Excel file in chunks
+            processed_chunks = []
+
+            with st.spinner('Memproses file excel ...'):
+                total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
+
+
+            progress_bar = st.progress(0, f"Memproses {num_chunks} Chunk Data.")
+
+            for i in range(num_chunks):
+                # Update the progress bar
+                progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+
+                # Use skiprows to read specific chunks
+                chunk = pd.read_excel(
+                    uploaded_file,
+                    sheet_name="Media Sosial",
+                    engine='openpyxl',
+                    skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                    nrows=chunksize,  # Read only 'chunksize' rows at a time
+                )
+                
+                # Process the current chunk
+                processed_chunk = process_chunk(chunk, kd)
+                processed_chunks.append(processed_chunk)
+                
+                
+                progress_bar.progress((i + 1) / num_chunks, f"Istirahat 2 detik ...")
+                time.sleep(2)  # Pause for 2 seconds between chunks
+            
+            # Combine all processed chunks into a single DataFrame
+            final_df = pd.concat(processed_chunks, ignore_index=True)
+            
+            progress_bar.empty()
+            eksekusi_excel2(final_df, kd)
+            
+            # eksekusi_excel(tab1, tab2, df)
         elif is_excel is not True and uploaded_file is None:
             base_url = "https://api.kurasi.media/new-export/456"
             dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
@@ -703,15 +764,12 @@ else:
                     file_bytes = BytesIO(response.content)
                     df = pd.read_excel(file_bytes, sheet_name="Media Sosial")
 
-                eksekusi_excel(tab1, tab2, df)
+                # eksekusi_excel(tab1, tab2, df)
 
             except requests.exceptions.RequestException as e:
                 st.error(f"Error: {e}")
         else:
             st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")
     else:
-        with tab1:
-            st.info("Data will display here, please execute proses data first!", icon="ℹ️")
-        with tab2:
-            st.info("Data will display here, please execute proses data first!", icon="ℹ️")
+        st.info("Data will display here, please execute proses data first!", icon="ℹ️")
         

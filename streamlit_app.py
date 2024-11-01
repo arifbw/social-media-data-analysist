@@ -5,52 +5,52 @@ from PIL import Image
 import re
 import requests
 from openpyxl import load_workbook
-from stqdm import stqdm
+# from stqdm import stqdm
 from io import BytesIO
 from datetime import datetime
 from streamlit_condition_tree import condition_tree, config_from_dataframe
 import time
+import pymongo
+import streamlit_authenticator as stauth
+import yaml
+from yaml.loader import SafeLoader
+import page_service as ps
+from streamlit_tags import st_tags
 
-# from streamlit_gsheets import GSheetsConnection
+# init page
+st.set_page_config(
+    page_title="Social Media Data Analysist",
+    page_icon="📊",
+    layout="wide"
+)
 
-# Backend URLs
-base_url = "https://api.kurasi.media"
+img_logo = Image.open('logo_pasker.png')
+st.logo(img_logo, size="large")
 
-# Login function to authenticate and retrieve tokens
-def login(username, password):
-    response = requests.post(base_url + "/login", json={"username": username, "password": password, "ref": "web", "remember_me": 0})
-    
-    if response.status_code == 200:
-        tokens = response.json()
+with open('config.yaml') as file:
+    config_yaml = yaml.load(file, Loader=SafeLoader)
 
-        st.session_state.user = tokens["user"]
-        st.session_state.access_token = tokens['access-token']
-        st.session_state.refresh_token = tokens['refresh-token']
-        st.success("Logged in successfully!")
-        st.rerun()
-    else:
-        st.error("Login failed. Please check your credentials.")
+# password = stauth.Hasher.hash_passwords(config_yaml['credentials'])
+# st.write(password)
 
+authenticator = stauth.Authenticate(
+    config_yaml['credentials'],
+    config_yaml['cookie']['name'],
+    config_yaml['cookie']['key'],
+    config_yaml['cookie']['expiry_days'],
+    auto_hash=False
+)
 
-#fungsi-fungsi get data
-@st.cache_data
-def get_data_stats_all_medsos():
-    response = requests.get(base_url + "/stats-source/456", headers={"token": st.session_state.access_token})
+authenticator.login(location="unrendered")
 
-    if response.status_code == 200:
-        return response.json()
-    else: 
-        return []
+st.session_state["auth_obj"] = authenticator
 
-@st.cache_data
-def get_data_stats_all_sentiment():
-    response = requests.get(base_url + "/stats-sentiment/456", headers={"token": st.session_state.access_token})
+client = None
+db = None
 
-    if response.status_code == 200:
-        return response.json()
-    else: 
-        return []
-
+@st.cache_resource
+def init_connection():
+    return pymongo.MongoClient(**st.secrets["mongo"])
 
 @st.cache_data
 def kalkulasi_banyak_row(uploaded_file):
@@ -91,10 +91,104 @@ def classify_job_category2(caption, categories):
 
     return matched_categories
 
-def process_chunk(chunk, kd):
-    for item in stqdm(kd, desc="Analyze content semantic ...", backend=False, frontend=True):
-        chunk[item["kamus_data"]] = chunk['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
-    return chunk
+def classify_akun(nama_akun, is_pers_value):
+    kat_akun = "Akun Netizen"
+    pattern = re.compile(r'|'.join(kat_akun_loker), re.IGNORECASE)
+
+    if(is_pers_value):
+        return "Akun Pers"
+    
+    if pattern.search(nama_akun):
+        return "Akun Loker"
+    
+    return kat_akun
+
+def kalkulasi_persentase_lowongan(params):
+    result = 0
+    params.insert(0, params.pop())
+
+    for i, param in enumerate(params):
+        if(i==0 and param=="Akun Loker"):
+            result += nilai_bobot[0]
+        elif(i != 0 and "tdk_ada_informasi" not in param):
+            result += nilai_bobot[i]
+
+    return result
+
+
+def rand_persen_wait(persen):
+    result = False
+    
+    if(persen > 5 and persen < 9):
+        result = True
+    elif(persen > 10 and persen < 15):
+        result = True
+    elif(persen > 20 and persen < 25):
+        result = True
+    elif(persen > 30 and persen < 35):
+        result = True
+    elif(persen > 40 and persen < 45):
+        result = True
+    elif(persen > 50 and persen < 55):
+        result = True
+    elif(persen > 60 and persen < 65):
+        result = True
+    elif(persen > 70 and persen < 75):
+        result = True
+    elif(persen > 80 and persen < 85):
+        result = True
+    elif(persen > 90 and persen < 95):
+        result = True
+
+    return result
+
+def process_chunk(chunk, kd, collection_name, progress_bar):
+
+    for index, row in chunk.iterrows():
+        # Get the 'Konten' value once for this row
+        konten_value = str(row['Konten'])
+        akun_value = str(row['Akun/Judul'])
+        is_pers_value = str(row['Jenis Akun']) == "Pers"
+        data_params_kalkulasi_persentase_lowongan = []
+        
+        # Calculate and set classifications for each item in kd
+        for item in kd:
+            # Assuming item["kamus_data"] is the name of the new column
+            column_name = item["kamus_data"]
+
+            if column_name not in chunk.columns:
+                # Create the column if it doesn't exist
+                chunk[column_name] = None
+            
+            # Apply classify_job_category2 and assign result to the specific cell
+            result_1 = classify_job_category2(konten_value, item)
+            chunk.at[index, column_name] = result_1
+            data_params_kalkulasi_persentase_lowongan.append(result_1)
+
+
+        # Mengkliasifikasikan Tipe Akun
+        if "Klasifikasi Akun" not in chunk.columns:
+            chunk["Klasifikasi Akun"] = None
+
+        result_2 = classify_akun(akun_value, is_pers_value)
+        chunk.at[index, "Klasifikasi Akun"] = result_2
+        data_params_kalkulasi_persentase_lowongan.append(result_2)
+
+
+        # Menghitung Persentase Lowongan
+        if "Persentase Lowongan" not in chunk.columns:
+            chunk["Persentase Lowongan"] = None
+
+        chunk.at[index, "Persentase Lowongan"] = kalkulasi_persentase_lowongan(data_params_kalkulasi_persentase_lowongan)
+
+
+        progress_bar.progress(index/len(chunk), f"Menganalisa data baris ke-{index} dari {len(chunk)} data.")
+
+    progress_bar.empty()
+
+    collection = db[collection_name]
+    data_dict = chunk.to_dict(orient="records")
+    collection.insert_many(data_dict)
 
 def clean_location_name(name):
     """
@@ -124,6 +218,9 @@ job_categories = None
 uploaded_file = None
 
 keywords = None
+kat_akun_loker = None
+nilai_bobot = []
+
 def categorize_job_post(caption):
     caption = caption.lower()  # Convert caption to lowercase for case-insensitive matching
     caption = re.sub(r'[^\w\s]', '', caption)  # Remove punctuation
@@ -177,14 +274,6 @@ def get_kamus_data():
             })
 
     return result
-
-# Global session state for tokens
-if 'access_token' not in st.session_state:
-    st.session_state.access_token = None
-if 'refresh_token' not in st.session_state:
-    st.session_state.refresh_token = None
-if 'token_thread_started' not in st.session_state:
-    st.session_state['token_thread_started'] = False
 
 def add_filter_component(df):
     with st.expander("Filter Data"):
@@ -276,17 +365,6 @@ def update_kamus_data():
             with open("kamus_data.xlsx", "wb") as f:
                 f.write(data_baru.getbuffer())
                 st.rerun()
-
-
-# init page
-st.set_page_config(
-    page_title="Social Media Data Analysist",
-    page_icon="📊",
-    layout="wide"
-)
-
-img_logo = Image.open('logo_pasker.png')
-st.logo(img_logo, size="large")
 
 
 def convert_df_to_excel(df):
@@ -382,8 +460,8 @@ def eksekusi_excel(tab1, tab2, df):
     with tab2:
         kd = get_kamus_data()
 
-        for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
-            df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
+        # for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
+            # df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
 
 
         formatted_array = [item["kamus_data"] for item in kd]
@@ -411,7 +489,7 @@ def eksekusi_excel(tab1, tab2, df):
                 fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
                 st.plotly_chart(fig_bar_category)
 
-if not st.session_state.access_token:
+if not st.session_state.authentication_status:
     st.markdown("""
         <style>
             .stForm{
@@ -433,38 +511,34 @@ if not st.session_state.access_token:
         image_login = Image.open('login.png')
         st.image(image_login, width=400)
     with col2:
-        with st.form("login_form"):
-            st.subheader('Silahkan Login 🔒😎', divider="gray")
-            
-            st.info('Mohon masukan Akun yang dipakai di aplikasi app.onlinemonitoring.id', icon="ℹ️")
-            username = st.text_input("Username", placeholder="Mohon Masukan username anda ...")
-            password = st.text_input("Password", type="password", placeholder="Mohon Masukan password anda ...")
-            
-            login_button = st.form_submit_button("Login")
-
-            if login_button:
-                login(username, password)
+        try: 
+            authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'Lanjukan', 'Captcha':'Masukan Kode di bawah :'}), captcha=True)
+        except Exception as e:
+            st.toast(e)
 else:
-    image = Image.open('ilustrasi_old.png')
     st.markdown("""
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
         <style>
-            .stAppHeader{
-                background: #ffe0dc;
-                box-shadow: 0px 5px 10px 1px rgba(0, 0, 0, 0.2);
+            div[data-testid='stNumberInputContainer']{
+                border: 5px solid #f0f2f6;
             }
-            .stSidebar{
-                border-top-right-radius: 70px;
-                border-bottom-right-radius: 70px;
-                box-shadow: 5px 0px 5px 1px rgba(0, 0, 0, 0.1);
-                width: 270px !important;
+                
+            div[data-testid='stNumberInputContainer'] input{
                 background: white;
             }
-            .stMainMenu, .stAppDeployButton{
-                display: none !important;
-            } 
         </style>
     """, unsafe_allow_html=True)
+
+    ps.setup_st_sidebar(st, authenticator)
+
+    client = init_connection()
+    db = client.medmon
+
+    items = db.config.find()
+    arr = list(items)
+    config = arr[0] if len(arr) > 0 else None
+
+    image = Image.open('ilustrasi_old.png')
+    
 
     # st.title(" Data Analysis for Pasar Kerja")
     st.write("# Social Media Data Analysist 📈🚀")
@@ -474,162 +548,23 @@ else:
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        # st.image("https://cliply.co/wp-content/uploads/2019/12/371903520_SOCIAL_ICONS_TRANSPARENT_400px.gif", width=100)
-        st.image(image, use_column_width=True)
+        if(image):
+            st.image(image, use_column_width=True)
         
-        
-        st.header('Data Filtering :')
-        config = {
-            'fields': {
-                'UUID': {
-                    'label': 'UUID',
-                    'type': 'text'
-                },
-                'No': {
-                    'label': 'No',
-                    'type': 'number'
-                },
-                'Tanggal_Publikasi': {
-                    'label': 'Tanggal Publikasi',
-                    'type': 'date'
-                },
-                'Jam_Publikasi': {
-                    'label': 'Jam Publikasi',
-                    'type': 'time'
-                },
-                'Tanggal_Tersimpan': {
-                    'label': 'Tanggal Tersimpan',
-                    'type': 'datetime'
-                },
-                'Topik': {
-                    'label': 'Topik',
-                    'type': 'text'
-                },
-                'Akun_Judul': {
-                    'label': 'Akun/Judul',
-                    'type': 'text'
-                },
-                'Konten': {
-                    'label': 'Konten',
-                    'type': 'text'
-                },
-                'Dihapus': {
-                    'label': 'Dihapus (1 Jika Ya / 0 Jika Tidak)',
-                    'type': 'boolean'
-                },
-                'Sentimen': {
-                    'label': 'Sentimen',
-                    'type': 'text'
-                },
-                'Emotion': {
-                    'label': 'Emotion',
-                    'type': 'text'
-                },
-                'Sumber': {
-                    'label': 'Sumber',
-                    'type': 'text'
-                },
-                'Url': {
-                    'label': 'Url',
-                    'type': 'text'
-                },
-                'Followers': {
-                    'label': 'Followers',
-                    'type': 'number'
-                },
-                'Likes': {
-                    'label': 'Likes',
-                    'type': 'number'
-                },
-                'Retweets': {
-                    'label': 'Retweets',
-                    'type': 'number'
-                },
-                'ESMR': {
-                    'label': 'ESMR',
-                    'type': 'text'
-                },
-                'View': {
-                    'label': 'View',
-                    'type': 'number'
-                },
-                'Engagement': {
-                    'label': 'Engagement',
-                    'type': 'number'
-                },
-                'Location': {
-                    'label': 'Location',
-                    'type': 'text'
-                },
-                'Jenis_Akun': {
-                    'label': 'Jenis Akun',
-                    'type': 'select'
-                },
-                'Jenis_Unggahan': {
-                    'label': 'Jenis Unggahan',
-                    'type': 'select'
-                },
-                'Is_Validated': {
-                    'label': 'Is Validated',
-                    'type': 'bool'
-                }
-            }
-        }
-
-        init_tree = {
-            "type": "group",
-            "children": [
-                {
-                    "type": "rule",
-                    "properties": {
-                        "fieldSrc": "field",
-                        "field": None,
-                        "operator": None,
-                        "value": [],
-                        "valueSrc": []
-                    }
-                },
-                {
-                "type": "rule",
-                "properties": {
-                    "fieldSrc": "field",
-                    "field": None,
-                    "operator": None,
-                    "value": [],
-                    "valueSrc": []
-                }
-                },
-                {
-                "type": "rule",
-                "properties": {
-                    "fieldSrc": "field",
-                    "field": None,
-                    "operator": None,
-                    "value": [],
-                    "valueSrc": []
-                }
-                }
-            ]
-        }
-
-
-        return_val = condition_tree(
-            config,
-            always_show_buttons=True,
-            return_type='sql',
-            placeholder='Belum ada rule filtering. Silahkan tambahkan rule baru.'
-        )
-
-    with col2:
         workbook = load_workbook('kamus_data.xlsx', read_only=True)
-        st.header('Data Classification :')
+        st.header('Klasifikasi Data Lowongan :')
 
         visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
 
+        if config:
+            data_default_keywords = config["keywords"]
+        else:
+            data_default_keywords = visible_sheets
+
         keywords = st.multiselect(
             "Kamus Data Analisa Semantik :",
-            visible_sheets,
-            visible_sheets
+            options=visible_sheets,
+            default=data_default_keywords
         )
 
         
@@ -650,43 +585,77 @@ else:
 
             if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
                 update_kamus_data()
-
-        #connection
-        # url_sheet = "https://docs.google.com/spreadsheets/d/192owtZ8J33nrYonrVKGIdcowxZJz8CObuol_ATr26w8/edit?usp=sharing"
-        # conn = st.connection("gsheets", type=GSheetsConnection)
-        # data = conn.query('SELECT * FROM "Tunjangan" LIMIT 10', spreadsheet=url_sheet)
-        # st.dataframe(data)
-        st.header('Data Cleansing :')
-
-        left, right = st.columns(2)
-        with left:
-            st.toggle("Hapus Post Duplikat")
-            st.toggle("Hapus karakter spesial")
-            st.toggle("Hapus post bukan lowongan")
-
-        with right:
-            st.toggle("Aktifkan Bot Detector")
-            st.toggle("Aktifkan Hoax Detector")
-            st.toggle("Hapus Akun Bot / Hoax")
         
-        st.text("")
-        left, right = st.columns(2)
-        with right:
-           if st.button("Test Data Cleansing", icon=":material/play_circle:", use_container_width=True):
-               st.write("pages/jupyter.py")
+        
 
-        st.header('Data Source :')
+    with col2:
+        st.header('Klasifikasi Akun :')
+        
+        st.write('Kategori Akun Loker Mengandung Kata berikut :')
+        
+        if config:
+            data_default_akun_loker = config["kat_akun_loker"]
+        else:
+            data_default_akun_loker = ['loker', 'karir', 'kerja']
 
-        data_source = st.radio("Data Source to Analyze :", ["***Local (From Excel)***", "***Remote (From Server)***"], horizontal=True)
+        kat_akun_loker = st_tags(
+            label="",
+            text='Press enter to add more',
+            value=data_default_akun_loker,
+            maxtags = 20,
+            key='1')
+        
+        
+        st.header('Bobot Klasifikasi (%) :')
+        
+        st.write('Bobot ini menentukan nilai apakah suatu konten Lowongan / Non-Lowongan. Pastikan total dari semua bobot tidak lebih dari 100%.')
 
-        is_excel = data_source=="***Local (From Excel)***"
+        left, center, right = st.columns(3)
+
+        list_bobot = ["Akun Loker"] + keywords
+
+        for index, item in enumerate(list_bobot):
+            bobot_awal = 0
+
+            if(index==0):
+                bobot_awal = 50.00
+            else:
+                bobot_awal = 50/(len(list_bobot)-1)
+
+            if config and len(list_bobot) == len(config["nilai_bobot"]):
+                bobot_awal = config["nilai_bobot"][index]
+
+            if index % 3 == 0:
+                with left:
+                    nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+            elif index % 3 == 1:
+                with center:
+                    nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+            else:
+                with right:
+                    nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+        
+        total = sum(nilai_bobot)
+
+        if round(total, 2) < 100:
+            st.write(f":red[*Data Bobot Kurang dari 100%. Tambahkan nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+        elif round(total, 2) > 100:
+            st.write(f":red[*Data Bobot Lebih dari 100%. Kurangi nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+        else:
+            st.write(":green[*Total Data Bobot Sudah PAS 100%]")
+        
+        st.header('Mulai Proses :')
+
+        data_source = st.radio("Data Source to Analyze :", ["***Local (Excel)***", "***Remote (OP Server)***", "***Remote (WL Server)***"], horizontal=True)
+
+        is_excel = data_source=="***Local (Excel)***"
+        is_server = data_source=="***Remote (OP Server)***"
         
         if(is_excel):
             uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+        elif(is_server):
+            st.write("Not Implemented")
         else:
-            # Base URL
-            base_url = "https://test.com/new-export/456"
-
             # Date slider range component
             date_range = st.date_input('Start Date  - End Date :', [])
             
@@ -695,6 +664,7 @@ else:
             else:
                 from_date, to_date = [datetime.now(), datetime.now()]
 
+        data_target = st.radio("Data Target Hasil Proses :", ["***Buat Baru (Create)***", "***Sudah Ada (Update)***"], horizontal=True)
             
         chunksize = st.slider(
             "Total Row Per Process :",
@@ -706,7 +676,7 @@ else:
 
         left, middle, right = st.columns(3)
         
-        if(is_excel is not True):
+        if(is_excel is not True and is_server is not True):
             with right:
                 if st.button("Export Data", type="secondary", icon="📥", use_container_width=True):
                     base_url = "https://api.kurasi.media/new-export/456"
@@ -722,31 +692,39 @@ else:
     left, middle, middle2, right = st.columns(4) 
 
     with middle2:
-        st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True)
+        if st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True):
+            
+            collection = db["config"]
+            
+            data_config = {
+                "keywords": keywords,
+                "kat_akun_loker": kat_akun_loker,
+                "nilai_bobot": nilai_bobot
+            }
+
+            collection.drop()
+
+            collection.insert_one(data_config)
+
+            st.toast("Berhasil Menyimpan Konfigurasi!")
 
     with right:
-        eksekusi = st.button("Proses Data Scraping", type="primary", icon="▶️", use_container_width=True)
-
-    st.sidebar.image("https://cliply.co/wp-content/uploads/2019/12/371903520_SOCIAL_ICONS_TRANSPARENT_400px.gif", width=100)
-    data_stats = get_data_stats_all_medsos()
-    data_sentiment = get_data_stats_all_sentiment()
-
-    setup_data_stats_and_sentiment(data_stats, data_sentiment)
+        eksekusi = st.button("Mulai Proses Data", type="primary", icon="▶️", use_container_width=True)
 
     
-    st.header('Result Proses :')
+    # st.header('Result Proses :')
 
     # tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
 
     if(eksekusi):
         st.toast("Memulai Proses Data Scrapping, Mohon cek Progress di section Result Proses.")
-        stqdm.pandas()
+        # stqdm.pandas()
         # If a file has been uploaded
         if is_excel and uploaded_file is not None:
             kd = get_kamus_data()
 
             # Read the Excel file in chunks
-            processed_chunks = []
+            # processed_chunks = []
 
             with st.spinner('Memproses file excel ...'):
                 total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
@@ -754,10 +732,14 @@ else:
 
 
             progress_bar = st.progress(0, f"Memproses {num_chunks} Chunk Data.")
+            sub_progress_bar = st.progress(0, f"Menampilkan sub process ...")
+
+            current_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+            # collection_name = f"hasil_proses_{current_time}"
+            collection_name = "hasil_proses_v1"
 
             for i in range(num_chunks):
                 # Update the progress bar
-                progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
 
                 # Use skiprows to read specific chunks
                 chunk = pd.read_excel(
@@ -769,18 +751,25 @@ else:
                 )
                 
                 # Process the current chunk
-                processed_chunk = process_chunk(chunk, kd)
-                processed_chunks.append(processed_chunk)
+                # processed_chunk = process_chunk(chunk, kd)
+                # processed_chunks.append(processed_chunk)
+                
+                progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+
+                process_chunk(chunk, kd, collection_name, sub_progress_bar)
                 
                 
-                progress_bar.progress((i + 1) / num_chunks, f"Istirahat 2 detik ...")
-                time.sleep(2)  # Pause for 2 seconds between chunks
+                progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                time.sleep(0.5)  # Pause for 2 seconds between chunks
             
             # Combine all processed chunks into a single DataFrame
-            final_df = pd.concat(processed_chunks, ignore_index=True)
             
             progress_bar.empty()
-            eksekusi_excel2(final_df, kd)
+
+            st.toast("Sukses proses file", icon="ℹ️")
+            
+            # final_df = pd.concat(processed_chunks, ignore_index=True)
+            # eksekusi_excel2(final_df, kd)
             
             # eksekusi_excel(tab1, tab2, df)
         elif is_excel is not True and uploaded_file is None:
@@ -801,6 +790,4 @@ else:
                 st.error(f"Error: {e}")
         else:
             st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")
-    else:
-        st.info("Data will display here, please execute proses data first!", icon="ℹ️")
         

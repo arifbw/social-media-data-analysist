@@ -1,0 +1,39 @@
+cookie:
+  expiry_days: 30
+  key: bewe_st_master
+  name: pasker2024_master
+credentials:
+  usernames:
+    lowongan.admin:
+      email: lowongan.admin@gmail.com
+      failed_login_attempts: 0
+      first_name: Admin
+      last_name: Lowongan
+      logged_in: false
+      password: $2b$12$iF/XDUsPWXIL7gtbEbxBruEP7aUWlxMc/BP56IlyfI69ZBmMOaBjG
+      roles:
+      - admin
+      - editor
+      - viewer
+    lowongan.analis:
+      email: lowongan.analis@gmail.com
+      failed_login_attempts: 0
+      first_name: Analis
+      last_name: Lowongan
+      logged_in: false
+      password: $2b$12$7mqyT6K9XBhfPl.OftU3zuqZKQEebWkq4w6ZiNQ32OXcsAw5xjfRm
+      roles:
+      - viewer
+oauth2:
+  google:
+    client_id: null
+    client_secret: null
+    redirect_uri: null
+  microsoft:
+    client_id: null
+    client_secret: null
+    redirect_uri: null
+    tenant_id: null
+pre-authorized:
+  emails:
+  - melsby@gmail.com

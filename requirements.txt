@@ -4,3 +4,6 @@ plotly
 pandas
 stqdm
 streamlit-condition-tree
+pymongo
+streamlit-authenticator
+streamlit-tags

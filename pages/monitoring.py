@@ -5,6 +5,7 @@ import pymongo
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
+from io import BytesIO
 
 st.set_page_config(
     page_title="Analisa Data Pasker",
@@ -30,7 +31,9 @@ def init_connection():
 
 @st.cache_resource
 def get_all_data():
-    return list(collection.find())
+    excel_file_path = "data_sample_besar.xlsx"
+    df = pd.read_excel(excel_file_path)
+    return df
 
 def filter_data(data, filter_option, start_date=None, end_date=None):
     today = datetime.today().date()
@@ -55,7 +58,6 @@ def filter_data(data, filter_option, start_date=None, end_date=None):
     filtered_data =  filtered_data[filtered_data['Klasifikasi Akun'].isin(jenis_akun_filter)]
     
     return filtered_data
-
 
 client = init_connection()
 

@@ -115,7 +115,6 @@ def kalkulasi_persentase_lowongan(params):
 
     return result
 
-
 def rand_persen_wait(persen):
     result = False
     
@@ -143,7 +142,6 @@ def rand_persen_wait(persen):
     return result
 
 def process_chunk(chunk, kd, collection_name, progress_bar):
-
     for index, row in chunk.iterrows():
         # Get the 'Konten' value once for this row
         konten_value = str(row['Konten'])

@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+import dask.dataframe as dd
+from dask.delayed import delayed
 
 st.set_page_config(
     page_title="Analisa Data Pasker",
@@ -31,9 +33,8 @@ def init_connection():
 
 @st.cache_resource
 def get_all_data():
-    excel_file_path = "data_sample_besar.xlsx"
-    df = pd.read_excel(excel_file_path)
-    return df
+    parquet_file_path = "data_sample_besar.parquet"
+    return pd.read_parquet(parquet_file_path)
 
 def filter_data(data, filter_option, start_date=None, end_date=None):
     today = datetime.today().date()

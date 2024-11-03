@@ -68,9 +68,7 @@ filter_option = {
 }
 collection = db["hasil_proses_v1"]
 
-
-with st.spinner('Memuat data yang tesimpan di cache ...'):
-    with st.expander("Filter Data", icon=":material/filter_alt:"):
+with st.expander("Filter Data", icon=":material/filter_alt:"):
         # Date filter options
         filter_option["tanggal"] = st.selectbox(
             "Filter by Date",
@@ -85,6 +83,7 @@ with st.spinner('Memuat data yang tesimpan di cache ...'):
             start_date = st.date_input("Start Date")
             end_date = st.date_input("End Date")
 
+with st.spinner('Preparing data.'):
     # Query MongoDB collection with pagination
     raw_data = get_all_data()
     # Convert raw data to DataFrame

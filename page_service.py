@@ -18,7 +18,7 @@ def setup_st_sidebar(st, authenticator):
         </style>
     """, unsafe_allow_html=True)
 
-    st.sidebar.image("https://cliply.co/wp-content/uploads/2019/12/371903520_SOCIAL_ICONS_TRANSPARENT_400px.gif", width=100)
+    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/4668/4668808.png", width=100)
 
     # Sidebar navigation
     st.sidebar.subheader(f'Hi, *{st.session_state["name"]}* ! 👋')

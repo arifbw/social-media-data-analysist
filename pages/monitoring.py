@@ -109,49 +109,52 @@ with st.spinner('Preparing data.'):
 
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            st.write("### Top 10 Akun :red[Follower] Terbanyak")
-            follower_by_account = filtered_data.groupby('Akun/Judul').last().sort_values(by='Followers', ascending=False).head(10)
-            total_postingan = filtered_data.groupby('Akun/Judul').size().reset_index(name='Total Postingan')
+            with st.container(border=True):
+                st.write("### Top 10 Akun :red[Follower] Terbanyak")
+                follower_by_account = filtered_data.groupby('Akun/Judul').last().sort_values(by='Followers', ascending=False).head(10)
+                total_postingan = filtered_data.groupby('Akun/Judul').size().reset_index(name='Total Postingan')
 
-            follower_by_account = follower_by_account.merge(total_postingan, on='Akun/Judul')
-            
-            st.write(follower_by_account[['Akun/Judul', 'Followers', 'Total Postingan', 'Sumber']])
+                follower_by_account = follower_by_account.merge(total_postingan, on='Akun/Judul')
+                
+                st.write(follower_by_account[['Akun/Judul', 'Followers', 'Total Postingan', 'Sumber']])
         with col2:
-            st.write("### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
-            sentimen_count = filtered_data['Klasifikasi Akun'].value_counts().reset_index()
-            sentimen_count.columns = ['Klasifikasi Akun', 'Count']
-            fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
-            st.plotly_chart(fig_sentimen)
+            with st.container(border=True):
+                st.write("### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
+                sentimen_count = filtered_data['Klasifikasi Akun'].value_counts().reset_index()
+                sentimen_count.columns = ['Klasifikasi Akun', 'Count']
+                fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
+                st.plotly_chart(fig_sentimen)
 
         for idx, item in enumerate(kd):
-            category_count = filtered_data[item].explode().value_counts().reset_index()
-            category_count.columns = [item, 'Count']
-            category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
+            with st.container(border=True):
+                category_count = filtered_data[item].explode().value_counts().reset_index()
+                category_count.columns = [item, 'Count']
+                category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
 
 
-            st.subheader(f'Distribusi Data :red[{item}] di Setiap Postingan')
+                st.subheader(f'Distribusi Data :red[{item}] di Setiap Postingan')
 
-            col1, col2 = st.columns(2, gap="small")
-            # Pie chart
+                col1, col2 = st.columns(2, gap="small")
+                # Pie chart
 
-            if idx % 3 == 0:
-                with col1:
-                    st.write(category_count_filtered)
-                with col2:
-                    fig_pie_category = px.pie(category_count_filtered, names=item, values='Count')
-                    st.plotly_chart(fig_pie_category)
-            elif idx % 3 == 1:
-                with col1:
-                    fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h')
-                    st.plotly_chart(fig_bar_category)
-                with col2:
-                    st.write(category_count_filtered)
-            else:
-                with col1:
-                    fig_bar_category = px.bar(category_count_filtered, y='Count', x=item, orientation='v')
-                    st.plotly_chart(fig_bar_category)
-                with col2:
-                    st.write(category_count_filtered)
-        
+                if idx % 3 == 0:
+                    with col1:
+                        st.write(category_count_filtered)
+                    with col2:
+                        fig_pie_category = px.pie(category_count_filtered, names=item, values='Count')
+                        st.plotly_chart(fig_pie_category)
+                elif idx % 3 == 1:
+                    with col1:
+                        fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h')
+                        st.plotly_chart(fig_bar_category)
+                    with col2:
+                        st.write(category_count_filtered)
+                else:
+                    with col1:
+                        fig_bar_category = px.bar(category_count_filtered, y='Count', x=item, orientation='v')
+                        st.plotly_chart(fig_bar_category)
+                    with col2:
+                        st.write(category_count_filtered)
+            
     except:
         st.error("Gagal Menyiapkan Data.")

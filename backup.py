@@ -16,3 +16,28 @@ st.header('Klasifikasi Akun :')
     with right:
         if st.button("Test Data Cleansing", icon=":material/play_circle:", use_container_width=True):
             st.write("pages/jupyter.py")
+
+
+st.markdown("""
+        <style>
+            div[data-testid='stNumberInputContainer']{
+                border: 5px solid #f0f2f6;
+            }
+                
+            div[data-testid='stNumberInputContainer'] input{
+                background: white;
+            }
+                
+            div.stTabs div[data-baseweb='tab-border']{
+                display: none;
+            }  
+                
+            div.stTabs div[role='tabpanel']{
+                border: 2px solid rgba(49, 51, 63, 0.1);
+                padding: 10px 15px;
+                border-top-right-radius: 20px;
+                border-bottom-left-radius: 20px;
+                border-bottom-right-radius: 20px;
+            }
+        </style>
+    """, unsafe_allow_html=True)

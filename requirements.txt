@@ -7,3 +7,4 @@ streamlit-condition-tree
 pymongo
 streamlit-authenticator
 streamlit-tags
+barfi

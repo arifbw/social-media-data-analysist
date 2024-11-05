@@ -16,8 +16,6 @@ import yaml
 from yaml.loader import SafeLoader
 import page_service as ps
 from streamlit_tags import st_tags
-from barfi import st_barfi, Block, barfi_schemas
-from barfi.manage_schema import load_schema_name
 
 # init page
 st.set_page_config(
@@ -367,109 +365,6 @@ def update_kamus_data():
                 st.rerun()
 
 
-def convert_format_flow(data, current_config):
-    # Map names to options from current_config
-    options_map = {node["name"]: node["options"] for node in current_config["nodes"]}
-
-    # Ensure the Data Source node and validate it
-    data_source_nodes = [node for node, details in data.items() if details.get("type") == "Data Source"]
-
-    if len(data_source_nodes) != 1:
-        raise ValueError("There must be exactly one node with type 'Data Source'.")
-
-    data_source_node = data_source_nodes[0]
-
-    # Check if the Data Source node has no incoming connections (it's the root)
-    incoming_connections = {node: [] for node in data.keys()}
-
-    # Populate incoming connections dictionary
-    for node, details in data.items():
-        interfaces = details.get("interfaces", {})
-        for conn in interfaces.values():
-            if conn.get("type") == "output":
-                for target_node in conn.get("to", {}).keys():
-                    incoming_connections[target_node].append(node)
-
-    if incoming_connections[data_source_node]:
-        raise ValueError("The 'Data Source' node must have no incoming connections and be the root node.")
-
-    # Build adjacency list for topological sorting
-    graph = {}
-    in_degree = {}
-
-    # Initialize graph and in-degree dictionary
-    for node, details in data.items():
-        graph[node] = []
-        in_degree[node] = 0
-
-    # Populate graph and in-degree based on connections
-    for node, details in data.items():
-        interfaces = details.get("interfaces", {})
-        for interface, conn in interfaces.items():
-            if conn.get("type") == "output":
-                for target_node, target_interface in conn.get("to", {}).items():
-                    graph[node].append(target_node)
-                    in_degree[target_node] += 1
-
-    # Topological sort using Kahn's Algorithm, starting with Data Source
-    sorted_nodes = []
-    zero_in_degree = [data_source_node]  # Start with the Data Source node
-
-    while zero_in_degree:
-        current = zero_in_degree.pop(0)
-        sorted_nodes.append(current)
-        
-        for neighbor in graph[current]:
-            in_degree[neighbor] -= 1
-            if in_degree[neighbor] == 0:
-                zero_in_degree.append(neighbor)
-
-    # Reorder the original data based on sorted_nodes and add options
-    sorted_data_with_options = {}
-    for node in sorted_nodes:
-        sorted_data_with_options[node] = data[node]
-        sorted_data_with_options[node]["options"] = options_map.get(node, [])  # Add options if available
-
-    parsed_data = []
-    for node_name, node_data in sorted_data_with_options.items():
-        # Extract and format options
-        options = [{"label": label.lower(), "value": value} for label, value in node_data.get("options", [])]
-        # Append the formatted node data
-        parsed_data.append({
-            "node_name": node_name,
-            "node_type": node_data["type"],
-            "options": options
-        })
-    # Convert sorted data to JSON
-    # sorted_json_with_options = json.dumps(sorted_data_with_options, indent=2)
-    return parsed_data
-
-
-@st.dialog("Konfigurasi Mesin Klasifikasi", width="large")
-def visual_builder():
-    source = Block(name='Data Source')
-    source.add_output("data")
-    source.add_option("test", type='input')
-    source.add_option("Tipe", type='select', items=["Text", "Excel"])
-
-    operator = Block(name='Operator')
-    operator.add_input()
-    operator.add_option("Tipe", type='select', items=["Text", "Excel"])
-    operator.add_output()
-
-
-    result = Block(name='Result')
-    result.add_input()
-
-    # load_schema = st.selectbox('Select a saved schema:', barfi_schemas())
-
-    barfi_result = st_barfi(base_blocks=[source, operator, result], load_schema="latest", compute_engine=True, key="barfi_elem")
-    
-    if barfi_result:
-        result = convert_format_flow(barfi_result, load_schema_name("latest"))
-
-        st.write(result)
-
 def convert_df_to_excel(df):
     # Create a copy of the DataFrame to avoid modifying the original
     df_copy = df.copy()
@@ -592,31 +487,6 @@ def eksekusi_excel(tab1, tab2, df):
                 fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
                 st.plotly_chart(fig_bar_category)
 
-
-def node_data_source(cfg):
-    st.write("ini node " + cfg["node_name"])
-
-def node_operator(cfg):
-    st.write("ini node " + cfg["node_name"])
-
-def node_result(cfg):
-    st.write("ini node " + cfg["node_name"])
-
-def init_config_alur_klasifikasi(list_node):
-    st.write(list_node)
-    for idx, node in enumerate(list_node):
-        with st.expander(f"Konfigurasi Tahap #{idx + 1}", expanded=True):
-            st.write(f"##### {node['node_name']}")
-            match node["node_type"]:
-                case "Data Source":
-                    node_data_source(node)
-                case "Operator":
-                    node_operator(node)
-                case "Result":
-                    node_result(node)
-                case default:
-                    return None
-
 if not st.session_state.authentication_status:
     st.markdown("""
         <style>
@@ -639,6 +509,11 @@ if not st.session_state.authentication_status:
         except Exception as e:
             st.toast(e)
 else:
+    # st.title(" Data Analysis for Pasar Kerja")
+    st.write("# Mesin Analisa Klasifikasi Text 📈🚀")
+    st.write("##### Identifikasi dan Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
+    # st.write("-- --")
+
     st.markdown("""
         <style>
             div[data-testid='stNumberInputContainer']{
@@ -648,17 +523,9 @@ else:
             div[data-testid='stNumberInputContainer'] input{
                 background: white;
             }
-                
-            .stMainBlockContainer{
-                padding-left: 40px;
-                padding-right: 40px;
-                padding-top: 35px;
-                padding-bottom: 45px;
-            }
-                
-            .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(1) > div{
-                top: 70px;
-                position: sticky;
+
+            #editorCanvas > div.node-editor > .background{
+                background-color: rgb(113, 113, 113) !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -672,135 +539,281 @@ else:
     arr = list(items)
     config = arr[0] if len(arr) > 0 else None
 
-    # image = Image.open('ilustrasi_new.gif')
+    image = Image.open('ilustrasi_old.png')
     
 
     # logo = st.image("logo.gif", caption="Sunrise by the mountains")
-    col1, col2 = st.columns([1.4,2], gap="small")
+    col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        # st.write("##### Identifikasi dan Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
+        st.image(image)
 
-        with st.container(key="sticky"):
-            st.write("## Mesin Klasifikasi Text 🚀")
-            st.write("###### Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
-            # st.divider()
-            # st.write("## Mesin Klasifikasi Text 📈🚀")
-            st.markdown(f"""
-                <style>
-                    .st-key-vb_button {{
-                        position: absolute;
-                        bottom: 10px;
-                        text-align: right;
-                        right: 20px;
-                    }}
-                </style>
-            """, unsafe_allow_html=True)
+        st.text("")
+        st.text("")
 
-            st.html(
-                """
-                    <img src='https://i.ibb.co.com/mHJpjNb/mantap.gif' style='width: 100%; border-radius: 0.5rem;'/>
-                """
-            )
+        with st.container(border=True):
+            st.subheader('Klasifikasi Akun :')
+            
+            st.write('Kategori Akun Loker Mengandung Kata berikut :')
+            
+            if config:
+                data_default_akun_loker = config["kat_akun_loker"]
+            else:
+                data_default_akun_loker = ['loker', 'karir', 'kerja']
 
-            # if st.button("", type="primary", icon=":material/tune:", key="vb_button"):
-                # visual_builder()
-        
-        st.progress(0, "Progress Chunk & Split Data ...")
-        st.progress(0, "Progress Indentifikasi & Klasifikasi Text ...")
+            kat_akun_loker = st_tags(
+                label="",
+                text='Press enter to add more',
+                value=data_default_akun_loker,
+                maxtags = 20,
+                key='1')
+            
+        with st.container(border=True):
+            st.subheader('Preceding & Succeeding :')
+            st.write("Berikut klasifikasi berdasarkan awalan dan akhiran :")
+            tab1, tab2 = st.tabs(["Rentang Gaji", "Kouta Lowongan"])
 
-        left, right = st.columns(2)
-        
-        with left:
-            st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True)
-        
-        with right:
-            st.button("Mulai Klasifikasi", icon=":material/play_arrow:", use_container_width=True, type="primary")
-        
+            with tab1:
+                pre_gaji = st_tags(
+                    label="Kalimat Awalan :",
+                    text='Press enter to add more',
+                    value=["test 1", "test 2"],
+                    maxtags = 20,
+                    key='pre_gaji')
+                
+                succ_gaji = st_tags(
+                    label="Kalimat Akhiran :",
+                    text='Press enter to add more',
+                    value=["test 1", "test 2"],
+                    maxtags = 20,
+                    key='succ_gaji')
+
     with col2:
         with st.container(border=True):
-            st.write("#### Alur Proses Klasifikasi :")
+            st.subheader('Klasifikasi Utama :')
+            st.write("Berikut klasifikasi berdasarkan Kamus Data.")
 
-            tab1, tab2, tab3, tab4 = st.tabs(["Visual Flow Builder", "Hasil Proses Klasifikasi", "Riwayat Pemrosesan",  "Guideline Penggunaan"])
-            
+            tab1, tab2 = st.tabs(["Lowongan", "Non-Lowongan"])
+
             with tab1:
-                source = Block(name='Data Source')
-                source.add_output("data")
-                source.add_option("test", type='input')
-                source.add_option("Tipe", type='select', items=["Text", "Excel"])
+                workbook = load_workbook('kamus_data.xlsx', read_only=True)
 
-                operator = Block(name='Operator')
-                operator.add_input()
-                operator.add_option("Tipe", type='select', items=["Text", "Excel"])
-                operator.add_output()
+                visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
 
+                if config:
+                    data_default_keywords = config["keywords"]
+                else:
+                    data_default_keywords = visible_sheets
 
-                result = Block(name='Result')
-                result.add_input()
+                keywords = st.multiselect(
+                    "Kamus Data Analisa Semantik terkait Lowongan :",
+                    options=visible_sheets,
+                    default=data_default_keywords
+                )
 
-                # load_schema = st.selectbox('Select a saved schema:', barfi_schemas())
+                
+                left, right = st.columns(2)
 
-                barfi_result = st_barfi(base_blocks=[source, operator, result], load_schema="latest", compute_engine=True, key="barfi_elem")
+                with right:
+                    popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True)
 
-                if barfi_result:
-                    result = convert_format_flow(barfi_result, load_schema_name("latest"))
+                    with open("kamus_data.xlsx", "rb") as file:
+                        popover.download_button(
+                            label="Unduh Kamus Data",
+                            data=file,
+                            file_name="kamus_data.xlsx",
+                            use_container_width=True,
+                            icon=":material/download:",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
 
-                    init_config_alur_klasifikasi(result)
+                    if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
+                        update_kamus_data()
+                
+                with st.expander("Bobot Klasifikasi", icon=":material/percent:"):
+                    st.write('#### Bobot Klasifikasi (%)')
+                    
+                    st.write('Bobot ini menentukan nilai apakah suatu konten Lowongan / Non-Lowongan. Pastikan total dari semua bobot tidak lebih dari 100%.')
+
+                    left, center, right = st.columns(3)
+
+                    list_bobot = ["Akun Loker"] + keywords
+
+                    for index, item in enumerate(list_bobot):
+                        bobot_awal = 0
+
+                        if(index==0):
+                            bobot_awal = 50.00
+                        else:
+                            bobot_awal = 50/(len(list_bobot)-1)
+
+                        if config and len(list_bobot) == len(config["nilai_bobot"]):
+                            bobot_awal = config["nilai_bobot"][index]
+
+                        if index % 3 == 0:
+                            with left:
+                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+                        elif index % 3 == 1:
+                            with center:
+                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+                        else:
+                            with right:
+                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+                    
+                    total = sum(nilai_bobot)
+
+                    if round(total, 2) < 100:
+                        st.write(f":red[*Data Bobot Kurang dari 100%. Tambahkan nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+                    elif round(total, 2) > 100:
+                        st.write(f":red[*Data Bobot Lebih dari 100%. Kurangi nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+                    else:
+                        st.write(":green[*Total Data Bobot Sudah PAS 100%]")
 
             with tab2:
-                with st.container(height=1800, border=False):
-                    st.write("Under Development")
+                st.write("Mohon Maaf, Klasifikasi Non-Lowongan masih tahap Pengembamgan.")
 
-            with tab3:
-                with st.container(height=1800, border=False):
-                    st.write("Under Development")
-            with tab4:
-                st.write("## FAQ & Guideline")
-                with st.expander("Bagaimana cara meyimpan dan meng-update Alur pada Visual Builder ?", icon=":material/help:"):
-                    st.markdown("""
-                        ### Panduan Penyimpanan dan Pembaruan Alur Data
 
-                        Berikut ini adalah panduan untuk melakukan penyimpanan data dan memperbarui alur dengan benar. Pastikan untuk mengikuti setiap langkah dengan saksama.
+        with st.container(border=True):
+            st.header('Proses Klasifikasi :')
 
-                        ---
+            data_source = st.radio("Data Source to Analyze :", ["***Local (Excel)***", "***Remote (OP Server)***", "***Remote (WL Server)***"], horizontal=True)
 
-                        #### 1. Menyimpan Data (Save Data)
-
-                        Ketika Anda melakukan perubahan pada panel, sangat penting untuk menyimpan data agar perubahan tersebut tidak hilang. Berikut adalah langkah-langkah untuk menyimpan data:
-
-                        ### Langkah-langkah:
-
-                        1. **Pastikan Anda berada di dalam panel yang sesuai** – Pastikan semua perubahan yang Anda inginkan sudah dilakukan pada panel.
-                        
-                        2. **Tekan Menu** – Cari dan tekan opsi "Menu" pada antarmuka aplikasi Anda. Menu ini biasanya terletak di bagian atas atau samping aplikasi, tergantung pada desain antarmuka yang digunakan.
-
-                        3. **Pilih Opsi Save** – Setelah masuk ke menu, pilih opsi "Save" untuk menyimpan data terbaru.
-
-                        4. **Masukkan Nama Schema** – Pada kolom **Nama Schema**, ketikkan `'latest'`. Ini akan menjadi penamaan schema data terbaru yang telah Anda simpan.
-
-                        5. **Tekan Tombol Konfirmasi** – Tekan tombol konfirmasi (biasanya bertuliskan "Save" atau "Simpan") untuk menyimpan data dengan nama schema `'latest'`.
-
-                        ---
-
-                        #### 2. Memperbarui Alur (Execute)
-
-                        Setelah data tersimpan, jika Anda ingin memperbarui alur berdasarkan data terbaru, lakukan langkah berikut:
-
-                        ##### Langkah-langkah:
-
-                        1. **Periksa Kembali Data yang Disimpan** – Pastikan bahwa data terbaru telah disimpan dengan benar, dan nama schema yang digunakan adalah `'latest'`.
-
-                        2. **Tekan Tombol Execute** – Cari dan tekan tombol `Execute` untuk menjalankan pembaruan alur. Tombol ini biasanya terdapat di panel kontrol utama atau di bagian bawah setelah menyimpan perubahan.
-
-                        3. **Konfirmasi Pembaruan** – Tunggu beberapa saat hingga proses eksekusi selesai. Alur akan diperbarui dengan data yang terbaru sesuai dengan perubahan yang telah disimpan.
-
-                        ---
-
-                        ##### Catatan Tambahan:
-                        - **Periksa Notifikasi** – Setelah melakukan `Execute`, periksa notifikasi atau pesan di layar untuk memastikan bahwa alur telah diperbarui dengan sukses.
-                        - **Ulangi Langkah Jika Perlu** – Jika alur tidak diperbarui seperti yang diharapkan, ulangi langkah-langkah di atas dan pastikan semua perubahan sudah disimpan dengan nama schema yang benar.
-                    """)
+            is_excel = data_source=="***Local (Excel)***"
+            is_server = data_source=="***Remote (OP Server)***"
+            
+            if(is_excel):
+                uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+            elif(is_server):
+                st.write("Not Implemented")
+            else:
+                # Date slider range component
+                date_range = st.date_input('Start Date  - End Date :', [])
                 
-                with st.expander("Bagaimana Memulai Proses Klasifikasi ?", icon=":material/help:"):
-                    st.write("test")
-                st.info("Dengan mengikuti panduan ini, Anda dapat memastikan bahwa data yang Anda perbarui tersimpan dan alur diperbarui dengan baik. Pastikan untuk selalu menyimpan data sebelum menjalankan `Execute` agar tidak kehilangan perubahan yang telah dilakukan.", icon=":material/info:")
+                if(len(date_range) > 1):
+                    from_date, to_date = date_range
+                else:
+                    from_date, to_date = [datetime.now(), datetime.now()]
+
+            data_target = st.radio("Data Target Hasil Proses :", ["***Buat Baru (Create)***", "***Sudah Ada (Update)***"], horizontal=True)
+                
+            chunksize = st.slider(
+                "Total Row Per Process :",
+                value=500,
+                min_value=100,
+                max_value=2000,
+                step=100
+            )
+
+            left, middle, right = st.columns(3)
+            
+            if(is_excel is not True and is_server is not True):
+                with right:
+                    if st.button("Export Data", type="secondary", icon="📥", use_container_width=True):
+                        base_url = "https://api.kurasi.media/new-export/456"
+
+                        dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
+
+                        show_dynamic_url(dynamic_url)
+        
+            st.text("")
+
+            left, right = st.columns(2) 
+
+            with left:
+                if st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True):
+                    
+                    collection = db["config"]
+                    
+                    data_config = {
+                        "keywords": keywords,
+                        "kat_akun_loker": kat_akun_loker,
+                        "nilai_bobot": nilai_bobot
+                    }
+
+                    collection.drop()
+
+                    collection.insert_one(data_config)
+
+                    st.toast("Berhasil Menyimpan Konfigurasi!")
+
+            with right:
+                eksekusi = st.button("Mulai Proses Data", type="primary", icon="▶️", use_container_width=True)
+
+            
+            # st.header('Result Proses :')
+
+            # tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
+            st.text("")
+            st.text("")
+
+            if(eksekusi):
+                st.toast("Memulai proses")
+                if is_excel and uploaded_file is not None:
+                    # Read the Excel file in chunks
+                    # processed_chunks = []
+
+                    with st.spinner('Memproses file excel ...'):
+                        kd = get_kamus_data()
+                        total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                        num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
+
+
+                    progress_bar = st.progress(0, f"Memproses {num_chunks} Chunk Data.")
+                    sub_progress_bar = st.progress(0, f"Menampilkan sub process ...")
+
+                    current_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+                    # collection_name = f"hasil_proses_{current_time}"
+                    collection_name = "hasil_proses_v2"
+
+                    for i in range(num_chunks):
+                        # Update the progress bar
+
+                        # Use skiprows to read specific chunks
+                        chunk = pd.read_excel(
+                            uploaded_file,
+                            sheet_name="Media Sosial",
+                            engine='openpyxl',
+                            skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                            nrows=chunksize,  # Read only 'chunksize' rows at a time
+                        )
+                        
+                        # Process the current chunk
+                        # processed_chunk = process_chunk(chunk, kd)
+                        # processed_chunks.append(processed_chunk)
+                        
+                        progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+
+                        process_chunk(chunk, kd, collection_name, sub_progress_bar)
+                        
+                        
+                        progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                        time.sleep(0.5)  # Pause for 2 seconds between chunks
+                    
+                    # Combine all processed chunks into a single DataFrame
+                    
+                    progress_bar.empty()
+
+                    st.toast("Sukses proses file", icon="ℹ️")
+                    
+                    # final_df = pd.concat(processed_chunks, ignore_index=True)
+                    # eksekusi_excel2(final_df, kd)
+                    
+                    # eksekusi_excel(tab1, tab2, df)
+                elif is_excel is not True and uploaded_file is None:
+                    base_url = "https://api.kurasi.media/new-export/456"
+                    dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
+
+                    try:
+                        with st.spinner('Mengambil data ke Server, mohon tunggu sebentar ...'):
+                            response = requests.get(dynamic_url)
+                            response.raise_for_status()
+
+                            file_bytes = BytesIO(response.content)
+                            df = pd.read_excel(file_bytes, sheet_name="Media Sosial")
+
+                        # eksekusi_excel(tab1, tab2, df)
+
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")

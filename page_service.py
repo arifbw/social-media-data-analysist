@@ -1,3 +1,12 @@
+def setup_style_awal(st):
+    st.markdown("""
+        <style>
+            .stToolbarActions, .stMainMenu, .stAppDeployButton{
+                display: none !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
 def setup_st_sidebar(st, authenticator):
     st.markdown("""
         <style>

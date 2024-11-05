@@ -26,13 +26,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
-    <style>
-        .stToolbarActions, .stMainMenu, .stAppDeployButton{
-            display: none !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+ps.setup_style_awal(st)
 
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")

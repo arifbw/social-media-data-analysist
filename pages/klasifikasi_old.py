@@ -24,6 +24,8 @@ st.set_page_config(
     layout="wide"
 )
 
+ps.setup_style_awal(st)
+
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
@@ -295,49 +297,6 @@ def add_filter_component(df):
 
     return df
 
-def setup_data_stats_and_sentiment(data, data2):
-    st.sidebar.markdown(f"""
-        <style>
-            .custom-list li {{
-                padding: 3px;
-                font-size: 16px;
-                border-bottom: 2px solid #cecece;
-                list-style-type: none;
-                margin-left: 0px;
-            }}
-
-            .title_sidebar{{
-                color: #FF3333;
-                font-weight: 900 !important;
-            }}
-                        
-            iframe[title="streamlit_condition_tree.streamlit_condition_tree"]{{
-                border: 3px #cccccc dashed;
-                border-radius: 10px;
-                padding: 20px 20px;
-                box-sizing: content-box;
-            }}
-        </style>
-        <h3 class="title_sidebar">Sosmed Data</h3>
-        <ul class="custom-list">
-            <li><i class="fa-brands fa-linkedin"></i> <strong>LinkedIn</strong>: {data['linkedin']:,} data</li>
-            <li><i class="fa-brands fa-facebook"></i> <strong>Facebook</strong>: {data['facebook']:,} data</li>
-            <li><i class="fa-brands fa-twitter"></i> <strong>Twitter</strong>: {data['twitter']:,} data</li>
-            <li><i class="fa-brands fa-youtube"></i> <strong>YouTube</strong>: {data['youtube']:,} data</li>
-            <li><i class="fa-brands fa-tiktok"></i> <strong>TikTok</strong>: {data['tiktok']:,} data</li>
-            <li><i class="fa-brands fa-square-instagram"></i> <strong>Instagram</strong>: {data['instagram']:,} data</li>
-        </ul>
-    """, unsafe_allow_html=True)
-
-    st.sidebar.markdown(f"""
-        <h3 class="title_sidebar">Post Sentiment</h3>
-        <ul class="custom-list">
-            <li><i class="fa-solid fa-face-tired"></i> <strong>Negatif</strong>: {data2['negatif']:,} data</li>
-            <li><i class="fa-solid fa-face-surprise"></i> <strong>Netral</strong>: {data2['netral']:,} data</li>
-            <li><i class="fa-solid fa-face-smile"></i> <strong>Positif</strong>: {data2['positif']:,} data</li>
-        </ul>
-    """, unsafe_allow_html=True)
-
 def generate_url(base_url, from_date, to_date, date_type="date", sort="date"):
     source = "ZmFjZWJvb2ssdHdpdHRlcixpbnN0YWdyYW0sdGlrdG9rLHlvdXR1YmUsZm9ydW0sYmxvZyxsaW5rZWRpbg=="
     now = datetime.now()
@@ -488,14 +447,6 @@ def eksekusi_excel(tab1, tab2, df):
                 st.plotly_chart(fig_bar_category)
 
 if not st.session_state.authentication_status:
-    st.markdown("""
-        <style>
-            .stMainMenu{
-                display: none !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
     st.write("# Social Media Data Analysist 📈🚀")
     st.subheader("Dashboard for Insight & Semantic Data Analysist")
 
@@ -546,7 +497,8 @@ else:
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        st.image(image)
+        if(image):
+            st.image(image)
 
         st.text("")
         st.text("")

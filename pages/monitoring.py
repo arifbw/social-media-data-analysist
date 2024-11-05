@@ -14,6 +14,8 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
+ps.setup_style_awal(st)
+
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 

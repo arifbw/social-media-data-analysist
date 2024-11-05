@@ -620,7 +620,7 @@ def init_config_alur_klasifikasi(list_node):
 if not st.session_state.authentication_status:
     st.markdown("""
         <style>
-            .stMainMenu{
+            .stToolbarActions, .stMainMenu, .stAppDeployButton{
                 display: none !important;
             }
         </style>

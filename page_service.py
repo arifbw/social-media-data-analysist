@@ -12,9 +12,6 @@ def setup_st_sidebar(st, authenticator):
                 width: 270px !important;
                 background: white;
             }
-            .stToolbarActions, .stMainMenu, .stAppDeployButton{
-                display: none !important;
-            }
         </style>
     """, unsafe_allow_html=True)
 

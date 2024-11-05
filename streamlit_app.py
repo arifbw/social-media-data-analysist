@@ -26,6 +26,14 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+    <style>
+        .stToolbarActions, .stMainMenu, .stAppDeployButton{
+            display: none !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
@@ -618,14 +626,6 @@ def init_config_alur_klasifikasi(list_node):
                     return None
 
 if not st.session_state.authentication_status:
-    st.markdown("""
-        <style>
-            .stToolbarActions, .stMainMenu, .stAppDeployButton{
-                display: none !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
     st.write("# Social Media Data Analysist 📈🚀")
     st.subheader("Dashboard for Insight & Semantic Data Analysist")
 

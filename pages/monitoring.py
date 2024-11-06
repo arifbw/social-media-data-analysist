@@ -205,7 +205,7 @@ with top_section[1]:
             with down_menu[0]:
                 total_docs = collection.count_documents({})
                 total_pages = (total_docs + st.session_state["page_size"] - 1)  # Calculate total pages
-                st.write(f"Total Data: {total_docs}, Pages: {st.session_state["page"]} / {total_pages}")
+                st.write(f"Total Data: {total_docs}, Pages: {st.session_state['page'] if 'page' in st.session_state else 0} / {total_pages}")
                 
         except Exception as e:
             st.error("Gagal Menyiapkan Data." + str(e))

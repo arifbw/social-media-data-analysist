@@ -26,6 +26,7 @@ st.set_page_config(
     layout="wide"
 )
 
+
 ps.setup_style_awal(st)
 
 img_logo = Image.open('logo_pasker.png')
@@ -435,7 +436,8 @@ def convert_format_flow(data, current_config):
     parsed_data = []
     for node_name, node_data in sorted_data_with_options.items():
         # Extract and format options
-        options = [{"label": label.lower(), "value": value} for label, value in node_data.get("options", [])]
+        # options = [{"label": label.lower(), "value": value} for label, value in node_data.get("options", [])]
+        options = {label.lower(): value for label, value in node_data.get("options", [])}
         # Append the formatted node data
         parsed_data.append({
             "node_name": node_name,
@@ -447,17 +449,15 @@ def convert_format_flow(data, current_config):
     return parsed_data
 
 
-@st.dialog("Konfigurasi Mesin Klasifikasi", width="large")
-def visual_builder():
+def setup_visual_builder():
     source = Block(name='Data Source')
     source.add_output("data")
-    source.add_option("test", type='input')
-    source.add_option("Tipe", type='select', items=["Text", "Excel"])
+    source.add_option("Tipe", type='select', items=["Text Area", "Table List", "Excel", "Web API", "Semua Tipe"])
 
-    operator = Block(name='Operator')
-    operator.add_input()
-    operator.add_option("Tipe", type='select', items=["Text", "Excel"])
-    operator.add_output()
+    operator = Block(name='Text Classifier')
+    operator.add_input("input")
+    operator.add_option("Metode", type='select', items=["By Kamus Data", "By Pattern", "By Preceding & Succeding"])
+    operator.add_output("output")
 
 
     result = Block(name='Result')
@@ -466,11 +466,15 @@ def visual_builder():
     # load_schema = st.selectbox('Select a saved schema:', barfi_schemas())
 
     barfi_result = st_barfi(base_blocks=[source, operator, result], load_schema="latest", compute_engine=True, key="barfi_elem")
-    
+
+    st.divider()
+
+    st.html("<h3 style='color: #666566; font-weight: 900;'>Konfigurasi Node :</h3>")
+
     if barfi_result:
         result = convert_format_flow(barfi_result, load_schema_name("latest"))
-
-        st.write(result)
+        
+        init_config_alur_klasifikasi(result)
 
 def convert_df_to_excel(df):
     # Create a copy of the DataFrame to avoid modifying the original
@@ -596,28 +600,153 @@ def eksekusi_excel(tab1, tab2, df):
 
 
 def node_data_source(cfg):
-    st.write("ini node " + cfg["node_name"])
+    result = pd.DataFrame()
 
-def node_operator(cfg):
-    st.write("ini node " + cfg["node_name"])
+    if cfg["options"]["tipe"]=="Semua Tipe":
+        pilihan = st.radio("Pilih Tipe Sumber : ", options=["Excel", "Text Area", "Table List", "Api Web"], horizontal=True)
+    else:
+        pilihan = cfg["options"]["tipe"]
+
+    match pilihan:
+        case "Excel":
+            file_uploaded = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+
+            if file_uploaded:
+                result = pd.read_excel(file_uploaded)
+        case "Text Area":
+            columns = st_tags(
+                label="Judul Data : ",
+                text="Add more data",
+                value=["Text"]
+            )
+
+            for data in columns:
+                st.text_area(f"Masukan Data {data} : ", placeholder=f"Masukan Data {data} ... ")
+
+        case "Table List":
+            columns = st_tags(
+                label="List Kolom : ",
+                text="Add more columns",
+                value=["Column1", "Column2", "Column3"]
+            )
+
+            st.write("List Table : ")
+            df = pd.DataFrame(columns=columns)
+
+            result = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+        case "Web Api":
+            st.text_input("Endpoint API :", placeholder="Mohon Masukan Endpoint API ...")
+            st.selectbox("Pilih Method API", options=["GET", "POST", "PUT", "PATCH", "DELETE"])
+            st.text_area("Header API :", placeholder="Mohon Masukan Header API ...")
+
+            st.text("")
+
+            st.button("Test Api", type="primary", icon=":material/play_arrow:", key="left_btn")
+    
+    if(not result.empty):
+        st.write("Data Preview :")
+        with st.container(border=True):
+            st.json(result.to_json(), expanded=False)
+
+
+    return result
+
+def node_text_classifier(cfg):
+    # st.write(cfg)
+
+    match cfg["options"]["metode"]:
+        case "By Kamus Data":
+            sumber = st.selectbox("Pilih Sumber Kamus Data :", options=["File Excel", "Manual Input"])
+        case default:
+            st.write(cfg)
 
 def node_result(cfg):
-    st.write("ini node " + cfg["node_name"])
+    st.write(cfg)
 
 def init_config_alur_klasifikasi(list_node):
-    st.write(list_node)
-    for idx, node in enumerate(list_node):
-        with st.expander(f"Konfigurasi Tahap #{idx + 1}", expanded=True):
-            st.write(f"##### {node['node_name']}")
-            match node["node_type"]:
-                case "Data Source":
-                    node_data_source(node)
-                case "Operator":
-                    node_operator(node)
-                case "Result":
-                    node_result(node)
-                case default:
-                    return None
+    st.markdown("""
+       <style>
+            .box-test {
+                background: #666566;
+                height: 2.5px;
+                position: relative;
+                overflow: visible;
+                margin-left: 20px;
+                margin-top: 20px;
+            }
+                    
+            .box-test > div.line{
+                position: absolute;
+                left: 0px;
+                top: 0px;
+                height: 999999px;
+                width: 2px;
+            }
+                    
+            .box-test > div.line.white{
+                background: white;
+            }
+                    
+            .box-test > div.line.black{
+                background: #666566;
+            }
+                    
+            .st-key-box_node{
+                overflow: hidden;
+            }
+                
+            .box-test > div.step{
+                position: absolute;
+                left: -50%;
+                top: 50%;
+                transform: translate(50%, -50%);
+                background: #666566;
+                color: white;
+
+                width: 30px;
+                height: 30px;
+                border-radius: 100%;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # st.write(list_node)
+
+    with st.container(border=False, key="box_node"):
+        for idx, node in enumerate(list_node):
+            left, right = st.columns([1,7], gap="small", vertical_alignment="top")
+
+
+            with left:
+                # st.write(f"## #{idx}")
+                if(idx<len(list_node)-1):
+                    nama_kelas = "black"
+                else:
+                    nama_kelas = "white"
+
+                st.html(f"""
+                    <div class="box-test">
+                        <div class="line {nama_kelas}"></div>
+                        <div class="step">{idx+1}</div>
+                    </div>
+                """)
+
+            with right:
+                with st.expander(f"#{idx+1}. Konfigurasi {node['node_name']}", expanded=True):
+                    st.write(f"##### {node['node_name']}")
+                    match node["node_type"]:
+                        case "Data Source":
+                            node_data_source(node)
+                        case "Text Classifier":
+                            node_text_classifier(node)
+                        case "Result":
+                            node_result(node)
+                        case default:
+                            return None
 
 if not st.session_state.authentication_status:
     st.write("# Social Media Data Analysist 📈🚀")
@@ -633,6 +762,9 @@ if not st.session_state.authentication_status:
         except Exception as e:
             st.toast(e)
 else:
+    if st.session_state["name"] == "Analis Lowongan":
+        st.switch_page("pages/monitoring.py")
+
     st.markdown("""
         <style>
             div[data-testid='stNumberInputContainer']{
@@ -646,13 +778,17 @@ else:
             .stMainBlockContainer{
                 padding-left: 40px;
                 padding-right: 40px;
-                padding-top: 35px;
-                padding-bottom: 45px;
+                padding-top: 10px;
+                padding-bottom: 40px;
             }
                 
             .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(1) > div{
                 top: 70px;
                 position: sticky;
+            }
+                
+            .st-key-left_btn > div{
+                text-align: right;    
             }
         </style>
     """, unsafe_allow_html=True)
@@ -718,28 +854,7 @@ else:
             tab1, tab2, tab3, tab4 = st.tabs(["Visual Flow Builder", "Hasil Proses Klasifikasi", "Riwayat Pemrosesan",  "Guideline Penggunaan"])
             
             with tab1:
-                source = Block(name='Data Source')
-                source.add_output("data")
-                source.add_option("test", type='input')
-                source.add_option("Tipe", type='select', items=["Text", "Excel"])
-
-                operator = Block(name='Operator')
-                operator.add_input()
-                operator.add_option("Tipe", type='select', items=["Text", "Excel"])
-                operator.add_output()
-
-
-                result = Block(name='Result')
-                result.add_input()
-
-                # load_schema = st.selectbox('Select a saved schema:', barfi_schemas())
-
-                barfi_result = st_barfi(base_blocks=[source, operator, result], load_schema="latest", compute_engine=True, key="barfi_elem")
-
-                if barfi_result:
-                    result = convert_format_flow(barfi_result, load_schema_name("latest"))
-
-                    init_config_alur_klasifikasi(result)
+                setup_visual_builder()
 
             with tab2:
                 with st.container(height=1800, border=False):

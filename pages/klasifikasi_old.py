@@ -220,6 +220,14 @@ uploaded_file = None
 keywords = None
 kat_akun_loker = None
 nilai_bobot = []
+nilai_rentang_gaji = {
+    "pre": [],
+    "succ": []
+}
+nilai_kouta = {
+    "pre": [],
+    "succ": []
+}
 
 def categorize_job_post(caption):
     caption = caption.lower()  # Convert caption to lowercase for case-insensitive matching
@@ -461,7 +469,7 @@ if not st.session_state.authentication_status:
             st.toast(e)
 else:
     # st.title(" Data Analysis for Pasar Kerja")
-    st.write("# Mesin Analisa Klasifikasi Text 📈🚀")
+    st.write("# Mesin Klasifikasi Text 📈🚀")
     st.write("##### Identifikasi dan Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
     # st.write("-- --")
 
@@ -490,18 +498,17 @@ else:
     arr = list(items)
     config = arr[0] if len(arr) > 0 else None
 
-    image = Image.open('ilustrasi_old.png')
+    # image = Image.open('ilustrasi_old.png')
     
 
     # logo = st.image("logo.gif", caption="Sunrise by the mountains")
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        if(image):
-            st.image(image)
-
-        st.text("")
-        st.text("")
+        # if(image):
+            # st.image(image)
+            # st.text("")
+            # st.text("")
 
         with st.container(border=True):
             st.subheader('Klasifikasi Akun :')
@@ -525,20 +532,45 @@ else:
             st.write("Berikut klasifikasi berdasarkan awalan dan akhiran :")
             tab1, tab2 = st.tabs(["Rentang Gaji", "Kouta Lowongan"])
 
+            if config:
+                data_default_nilai_rentang_gaji = config["nilai_rentang_gaji"]
+                data_default_nilai_kouta = config["nilai_kouta"]
+            else:
+                data_default_nilai_rentang_gaji = nilai_rentang_gaji
+                data_default_nilai_kouta = nilai_kouta
+
             with tab1:
-                pre_gaji = st_tags(
+                nilai_rentang_gaji["pre"] = st_tags(
                     label="Kalimat Awalan :",
                     text='Press enter to add more',
-                    value=["test 1", "test 2"],
                     maxtags = 20,
-                    key='pre_gaji')
+                    value=data_default_nilai_rentang_gaji["pre"],
+                    key='pre_gaji'
+                )
                 
-                succ_gaji = st_tags(
+                nilai_rentang_gaji["succ"] = st_tags(
                     label="Kalimat Akhiran :",
                     text='Press enter to add more',
-                    value=["test 1", "test 2"],
                     maxtags = 20,
-                    key='succ_gaji')
+                    value=data_default_nilai_rentang_gaji["succ"],
+                    key='succ_gaji'
+                )
+            with tab2:
+                nilai_kouta["pre"] = st_tags(
+                    label="Kalimat Awalan :",
+                    text='Press enter to add more',
+                    maxtags = 20,
+                    value=data_default_nilai_kouta["pre"],
+                    key='pre_kouta'
+                )
+                
+                nilai_kouta["succ"] = st_tags(
+                    label="Kalimat Akhiran :",
+                    text='Press enter to add more',
+                    maxtags = 20,
+                    value=data_default_nilai_kouta["succ"],
+                    key='succ_kouta'
+                )
 
     with col2:
         with st.container(border=True):
@@ -679,7 +711,9 @@ else:
                     data_config = {
                         "keywords": keywords,
                         "kat_akun_loker": kat_akun_loker,
-                        "nilai_bobot": nilai_bobot
+                        "nilai_bobot": nilai_bobot,
+                        "nilai_rentang_gaji": nilai_rentang_gaji,
+                        "nilai_kouta": nilai_kouta
                     }
 
                     collection.drop()

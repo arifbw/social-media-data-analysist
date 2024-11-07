@@ -162,9 +162,12 @@ def get_all_column():
     return None
 
 @st.cache_data(ttl=180)
-def get_top_accounts(limit=10):
+def get_top_accounts(alur_waktu):
     pipeline = [
-        {"$match": {"Klasifikasi Akun": "Akun Loker"}},  # Filter by category
+        {"$match": {
+            "Klasifikasi Akun": "Akun Loker",
+            "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+        }},  # Filter by category
         {
             "$group": {
                 "_id": "$Akun/Judul",
@@ -173,7 +176,7 @@ def get_top_accounts(limit=10):
             }
         },
         {"$sort": {"Followers": -1}},
-        {"$limit": limit},
+        {"$limit": 10},
         {
             "$project": {
                 "_id": 1,
@@ -185,17 +188,22 @@ def get_top_accounts(limit=10):
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
 @st.cache_data(ttl=180)
-def get_total_posts_by_classification():
+def get_total_posts_by_classification(alur_waktu):
     pipeline = [
+        {"$match": { "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}}},
         {"$group": {"_id": "$Klasifikasi Akun", "Count": {"$sum": 1}}}
     ]
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
 @st.cache_data(ttl=180)
-def get_category_counts(category_field):
+def get_category_counts(category_field,alur_waktu):
     # If the category is "Jenis Kelamin", handle it specifically
+    match_stage = {"$match": {}}
+    match_stage["$match"]["Tanggal Publikasi"] = {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+
     if category_field == "Jenis Kelamin":
         pipeline = [
+            match_stage,
             {
                 "$project": {
                     "Jenis Kelamin": {
@@ -218,6 +226,7 @@ def get_category_counts(category_field):
     else:
         # Default pipeline for other categories
         pipeline = [
+            match_stage,
             {"$unwind": f"${category_field}"},
             {"$group": {"_id": f"${category_field}", "Count": {"$sum": 1}}},
             {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
@@ -239,7 +248,7 @@ list_kolom = collection.find_one().keys()
 with top_section[0]:
     # Date filter options
     with st.container(border=True, height=550):
-        st.write("##### Filter Data :")
+        st.write("##### Filter Data Table :")
 
         search_query = st.text_input("Search Data Posting :", placeholder="Cari data postingan disini ...")
 
@@ -278,7 +287,7 @@ with top_section[0]:
 
 with top_section[1]:
     with st.container(border=True):
-        st.write("##### Scrapping Data :")
+        st.write("##### Scrapping Data Table :")
 
         with st.spinner('Preparing data.'):
             try:
@@ -305,45 +314,56 @@ with top_section[1]:
                 st.info("")
                 st.error("Gagal Menyiapkan Data." + str(e))
 
-top_chart = st.columns(3, gap="small")
-# Top 10 Accounts with Most Followers
-with top_chart[0]:
-    with st.container(border=True):
-        st.write("### Top 10 :red[Akun Loker Follower] Terbanyak")
-        follower_by_account = get_top_accounts()
-        st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
+with st.container(border=True):
+    st.subheader("Visualisasi Data Grafik & Chart")
+    alur_waktu = st.slider("Alur Waktu Data : ",value=[datetime.datetime(2024, 7, 1, 0, 0), datetime.datetime(2024, 11, 1, 0, 0)], min_value=datetime.datetime(2024, 7, 1), max_value=datetime.datetime(2024, 12, 31, 1, 1), format="MM/DD/YY")
+    aw = [
+        date if isinstance(date, str) else date.strftime("%Y-%m-%d")
+        for date in alur_waktu
+    ]
+    
+    top_chart = st.columns(3, gap="small")
+    # Top 10 Accounts with Most Followers
+    with top_chart[0]:
+        with st.container(border=True):
+            st.write("##### Top 10 :red[Akun Loker Follower] Terbanyak")
+            follower_by_account = get_top_accounts(aw)
+            st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
 
-with top_chart[1]:
-    with st.container(border=True):
-        st.write("### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
-        
-        # Query to count each source
-        source_count = collection.aggregate([
-            {"$group": {"_id": "$Sumber", "Count": {"$sum": 1}}}
-        ])
-        source_count_df = pd.DataFrame(list(source_count))
-        source_count_df.columns = ['Sumber', 'Count']
+    with top_chart[1]:
+        with st.container(border=True):
+            st.write("##### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
+            
+            # Query to count each source
+            source_count = collection.aggregate([
+                {"$match": {
+                    "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}
+                }},
+                {"$group": {"_id": "$Sumber", "Count": {"$sum": 1}}}
+            ])
+            source_count_df = pd.DataFrame(list(source_count))
+            source_count_df.columns = ['Sumber', 'Count']
 
-        # Pie chart for source distribution
-        fig_source_pie = px.pie(source_count_df, names='Sumber', values='Count', title='Distribusi Sumber Sosial Media')
-        st.plotly_chart(fig_source_pie)
+            # Pie chart for source distribution
+            fig_source_pie = px.pie(source_count_df, names='Sumber', values='Count', title='Distribusi Sumber Sosial Media')
+            st.plotly_chart(fig_source_pie)
 
-# Total Posts by Account Classification
-with top_chart[2]:
-    with st.container(border=True):
-        st.write("### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
-        sentimen_count = get_total_posts_by_classification()
-        sentimen_count.columns = ['Klasifikasi Akun', 'Count']
-        fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
-        st.plotly_chart(fig_sentimen)
+    # Total Posts by Account Classification
+    with top_chart[2]:
+        with st.container(border=True):
+            st.write("##### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
+            sentimen_count = get_total_posts_by_classification(aw)
+            sentimen_count.columns = ['Klasifikasi Akun', 'Count']
+            fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
+            st.plotly_chart(fig_sentimen)
 
 # Loop through categories and generate charts
 for idx, item in enumerate(kd):
     with st.container(border=True):
-        st.subheader(f'Distribusi Data :red[{item}] di Setiap Postingan')
+        st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
 
         # Get category count data
-        category_count = get_category_counts(item)
+        category_count = get_category_counts(item,aw)
         category_count.columns = [item, 'Count']
 
         col1, col2 = st.columns(2, gap="small")

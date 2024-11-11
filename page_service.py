@@ -33,12 +33,13 @@ def setup_st_sidebar(st, authenticator):
     st.sidebar.text("")
     
     if st.session_state["name"] == "Admin Lowongan":
-        st.sidebar.page_link('streamlit_app.py', label='Klasifikasi Text ✨', icon=":material/precision_manufacturing:")
-        st.sidebar.page_link('pages/klasifikasi_old.py', label='Klasifikasi Text :red[(old)]', icon=":material/warning_off:")
+        st.sidebar.page_link('streamlit_app.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
+        # st.sidebar.page_link('pages/klasifikasi_old.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
         st.sidebar.page_link('pages/monitoring.py', label='Analisa Data', icon=":material/monitoring:")
         st.sidebar.page_link('pages/kelola_data.py', label='Kelola Data', icon=":material/database:")
         st.sidebar.page_link('pages/bnh_detector.py', label='Bot & Hoax Detector', icon=":material/smart_toy:")
     else:
+        st.sidebar.page_link('streamlit_app.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
         st.sidebar.page_link('pages/monitoring.py', label='Analisa Data', icon=":material/monitoring:")
     
     st.sidebar.text("")

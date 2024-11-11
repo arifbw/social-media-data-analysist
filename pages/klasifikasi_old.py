@@ -17,23 +17,19 @@ from yaml.loader import SafeLoader
 import page_service as ps
 from streamlit_tags import st_tags
 
-# init page
+# setup page
 st.set_page_config(
     page_title="Social Media Data Analysist",
     page_icon="📊",
     layout="wide"
 )
-
 ps.setup_style_awal(st)
-
 img_logo = Image.open('logo_pasker.png')
 st.logo(img_logo, size="large")
 
+# Check Authehntikasi
 with open('config.yaml') as file:
     config_yaml = yaml.load(file, Loader=SafeLoader)
-
-# password = stauth.Hasher.hash_passwords(config_yaml['credentials'])
-# st.write(password)
 
 authenticator = stauth.Authenticate(
     config_yaml['credentials'],
@@ -42,37 +38,36 @@ authenticator = stauth.Authenticate(
     config_yaml['cookie']['expiry_days'],
     auto_hash=False
 )
-
 authenticator.login(location="unrendered")
-
 st.session_state["auth_obj"] = authenticator
 
+# Variable db remote
 client = None
 db = None
 
-@st.cache_resource
-def init_connection():
-    return pymongo.MongoClient(**st.secrets["mongo"])
+# Global Variable
+dynamic_url = None
+job_categories = None
+uploaded_file = None
+collection_name = "hasil_proses_v1"
+final_df = pd.DataFrame()
 
-@st.cache_data
-def kalkulasi_banyak_row(uploaded_file):
-    df = pd.read_excel(uploaded_file, sheet_name="Media Sosial")
-    return len(df)
+# Variable2 Step Klasifikasi Berurutan
+kat_akun_loker = None
+keywords = None
+nilai_rentang_gaji = {
+    "pre": [],
+    "succ": []
+}
+nilai_kouta = {
+    "pre": [],
+    "succ": []
+}
+nilai_bobot = []
 
+
+# Function2 Klasifikasi
 def classify_job_category(caption, categories):
-        contains_others = bool(re.search("Lainnya", caption, re.IGNORECASE))
-
-        found_categories = []
-        for category in categories:
-            if re.search(category, caption, re.IGNORECASE):
-                found_categories.append(category)
-
-        if found_categories:
-            return found_categories[0]
-
-        return 'Lainnya'
-
-def classify_job_category2(caption, categories):
     matched_categories = []
 
     # Iterate through each category
@@ -117,32 +112,8 @@ def kalkulasi_persentase_lowongan(params):
 
     return result
 
-def rand_persen_wait(persen):
-    result = False
-    
-    if(persen > 5 and persen < 9):
-        result = True
-    elif(persen > 10 and persen < 15):
-        result = True
-    elif(persen > 20 and persen < 25):
-        result = True
-    elif(persen > 30 and persen < 35):
-        result = True
-    elif(persen > 40 and persen < 45):
-        result = True
-    elif(persen > 50 and persen < 55):
-        result = True
-    elif(persen > 60 and persen < 65):
-        result = True
-    elif(persen > 70 and persen < 75):
-        result = True
-    elif(persen > 80 and persen < 85):
-        result = True
-    elif(persen > 90 and persen < 95):
-        result = True
 
-    return result
-
+# Funciton2 Flow Pemrosesan
 def process_chunk(chunk, kd, collection_name, progress_bar):
     for index, row in chunk.iterrows():
         # Get the 'Konten' value once for this row
@@ -160,8 +131,8 @@ def process_chunk(chunk, kd, collection_name, progress_bar):
                 # Create the column if it doesn't exist
                 chunk[column_name] = None
             
-            # Apply classify_job_category2 and assign result to the specific cell
-            result_1 = classify_job_category2(konten_value, item)
+            # Apply classify_job_category and assign result to the specific cell
+            result_1 = classify_job_category(konten_value, item)
             chunk.at[index, column_name] = result_1
             data_params_kalkulasi_persentase_lowongan.append(result_1)
 
@@ -184,65 +155,13 @@ def process_chunk(chunk, kd, collection_name, progress_bar):
 
         progress_bar.progress(index/len(chunk), f"Menganalisa data baris ke-{index} dari {len(chunk)} data.")
 
-    progress_bar.empty()
+    progress_bar.progress(0, "Progress Indentifikasi & Klasifikasi Text ...")
 
-    collection = db[collection_name]
-    data_dict = chunk.to_dict(orient="records")
-    collection.insert_many(data_dict)
 
-def clean_location_name(name):
-    """
-    Removes prefixes like 'Desa', 'Kecamatan', 'Kota', etc. and returns the cleaned name.
-    """
-    # Remove any prefix like Desa, Kota, Kecamatan, etc.
-    prefixes = ['KOTA ', 'KAB. ', 'DAERAH ISTIMEWA ', 'KOTA ADM. ']
-    for prefix in prefixes:
-        if name.startswith(prefix):
-            name = name.replace(prefix, "")
-    return name.strip()
-
-# Function to map location from Konten based on location data
-def map_location(caption, location_df):
-    """
-    Finds the first matching location in the caption by comparing to the cleaned location names.
-    """
-    for location in location_df['cleaned_nama']:
-        # Check if the location is found in the caption (ignore case)
-        if re.search(location, caption, re.IGNORECASE):
-            # If found, return the corresponding full location name
-            return location_df[location_df['cleaned_nama'] == location]['nama'].values[0]
-    # If no location is found, return 'Unknown'
-    return 'Unknown'
-
-job_categories = None
-uploaded_file = None
-
-keywords = None
-kat_akun_loker = None
-nilai_bobot = []
-nilai_rentang_gaji = {
-    "pre": [],
-    "succ": []
-}
-nilai_kouta = {
-    "pre": [],
-    "succ": []
-}
-
-def categorize_job_post(caption):
-    caption = caption.lower()  # Convert caption to lowercase for case-insensitive matching
-    caption = re.sub(r'[^\w\s]', '', caption)  # Remove punctuation
-
-    for kd in job_categories:
-        # Iterate over categories and their keywords
-        for category in kd['category_data']:
-            name = category['name']
-
-            for keyword in category['threshold']:
-                if keyword in caption:
-                    return name
-
-    return 'uncategorized'
+    return chunk
+    # data_dict = chunk.to_dict(orient="records")
+    # collection = db[collection_name]
+    # collection.insert_many(data_dict)
 
 def get_kamus_data():
     kamus_data_xls = pd.ExcelFile('kamus_data.xlsx')
@@ -283,27 +202,11 @@ def get_kamus_data():
 
     return result
 
-def add_filter_component(df):
-    with st.expander("Filter Data"):
-        date_range = st.date_input("Select Tanggal Publikasi Range", [])
-        topik_filter = st.multiselect("Select Topik", df['Topik'].unique())
-        sentimen_filter = st.multiselect("Select Sentimen", df['Sentimen'].unique())
-    
-    # Filter by date (Tanggal Publikasi)
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        df['Tanggal Publikasi'] = pd.to_datetime(df['Tanggal Publikasi'], errors='coerce')
-        df = df[(df['Tanggal Publikasi'] >= pd.Timestamp(start_date)) & (df['Tanggal Publikasi'] <= pd.Timestamp(end_date))]
 
-    # Filter by Topik
-    if topik_filter:
-        df = df[df['Topik'].isin(topik_filter)]
-
-    # Filter by Sentimen
-    if sentimen_filter:
-        df = df[df['Sentimen'].isin(sentimen_filter)]
-
-    return df
+# Funtion2 Utilitas
+@st.cache_resource
+def init_connection():
+    return pymongo.MongoClient(**st.secrets["mongo"])
 
 def generate_url(base_url, from_date, to_date, date_type="date", sort="date"):
     source = "ZmFjZWJvb2ssdHdpdHRlcixpbnN0YWdyYW0sdGlrdG9rLHlvdXR1YmUsZm9ydW0sYmxvZyxsaW5rZWRpbg=="
@@ -312,11 +215,30 @@ def generate_url(base_url, from_date, to_date, date_type="date", sort="date"):
 
     return f"{base_url}?from={from_date}%2000:00:00&to={to_date}%2023:59:59&date_type={date_type}&sort={sort}&sources={source}&time={cur_time}"
 
-dynamic_url = None
 
+# Modal & Dialog
 @st.dialog("Download disini :")
 def show_dynamic_url(url):
     st.write(f"{url}")
+
+@st.dialog("Hasil Proses Klasifikasi :", width="large")
+def preview_result(kd, data):
+    formatted_array = [item["kamus_data"] for item in kd]
+    st.dataframe(data[['Akun/Judul','Konten', 'Url'] + formatted_array])
+
+    col = st.columns([3,1], gap="large")
+    with col[1]:
+        st.download_button(
+            label="Download",
+            use_container_width=True,
+            type="primary",
+            icon=":material/download:",
+            data=convert_df_to_excel(data[['Akun/Judul','Konten', 'Url'] + formatted_array]),
+            file_name='hasil_proses.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+
 
 @st.dialog("Upload New Data :")
 def update_kamus_data():
@@ -330,7 +252,6 @@ def update_kamus_data():
             with open("kamus_data.xlsx", "wb") as f:
                 f.write(data_baru.getbuffer())
                 st.rerun()
-
 
 def convert_df_to_excel(df):
     # Create a copy of the DataFrame to avoid modifying the original
@@ -347,112 +268,10 @@ def convert_df_to_excel(df):
     output.seek(0)
     return output
 
-def eksekusi_excel2(df, kd):
-
-    # for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
-        # df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
-
-    formatted_array = [item["kamus_data"] for item in kd]
-    st.dataframe(df[['Konten', 'Url'] + formatted_array])
-
-    
-    col1, col2, col3, col4 = st.columns(4, gap="large")
-
-    with col4:
-        st.download_button(
-            label="Download Excel file",
-            use_container_width=True,
-            type="primary",
-            icon=":material/download:",
-            data=convert_df_to_excel(df[['Konten', 'Url'] + formatted_array]),
-            file_name='hasil_proses.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-
-    return
-    
-    col1, col2 = st.columns(2, gap="large")
-
-    with col1:
-        for item in formatted_array:
-            category_count = df[item].explode().value_counts().reset_index()
-            category_count.columns = [item, 'Count']
-            category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
-
-            # Pie chart
-            fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
-            st.plotly_chart(fig_pie_category)
-
-    with col2:
-        for item in formatted_array:
-            category_count = df[item].explode().value_counts().reset_index()
-            category_count.columns = [item, 'Count']
-            category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
-            
-            # Horizontal bar 
-            fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
-            st.plotly_chart(fig_bar_category)
-
-
-def eksekusi_excel(tab1, tab2, df):
-    with tab1:
-        with st.spinner('Memproses data, mohon tunggu sebentar ...'):
-            df = add_filter_component(df)
-            st.dataframe(df)
-
-            col1, col2 = st.columns(2, gap="large")
-
-            with col1:
-                # Bar chart of Sentimen distribution
-                st.write("### Sentimen Distribution")
-                sentimen_count = df['Sentimen'].value_counts().reset_index()
-                sentimen_count.columns = ['Sentimen', 'Count']
-                fig_sentimen = px.bar(sentimen_count, x='Sentimen', y='Count', color='Sentimen')
-                st.plotly_chart(fig_sentimen)
-
-                st.write("### Engagement by Akun/Judul")
-                engagement_by_account = df.groupby('Akun/Judul').agg({'Engagement':'sum'}).reset_index().sort_values(by='Engagement', ascending=False)
-                fig_account = px.bar(engagement_by_account, x='Akun/Judul', y='Engagement', title='Top Accounts by Engagement')
-                st.plotly_chart(fig_account)
-            
-            with col2:
-                # Heatmap for Sentiment and Emotion
-                st.write("### Sentiment vs Emotion Heatmap")
-                heatmap_data = df.pivot_table(index='Sentimen', columns='Emotion', aggfunc='size', fill_value=0)
-                fig_heatmap = px.imshow(heatmap_data, text_auto=True, title='Sentiment vs Emotion Heatmap')
-                st.plotly_chart(fig_heatmap)
-
-    with tab2:
-        kd = get_kamus_data()
-
-        # for item in stqdm(kd, desc="Mengalisa data semantik konten ...", backend=False, frontend=True):
-            # df[item["kamus_data"]] = df['Konten'].progress_apply(lambda x: classify_job_category2(str(x), item))
-
-
-        formatted_array = [item["kamus_data"] for item in kd]
-        st.dataframe(df[['Konten', 'Url'] + formatted_array])
-        
-        col1, col2 = st.columns(2, gap="large")
-
-        with col1:
-            for item in formatted_array:
-                category_count = df[item].explode().value_counts().reset_index()
-                category_count.columns = [item, 'Count']
-                category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
-
-                # Pie chart
-                fig_pie_category = px.pie(category_count_filtered, names=item, values='Count', title=f'{item} Distribution in Captions')
-                st.plotly_chart(fig_pie_category)
-
-        with col2:
-            for item in formatted_array:
-                category_count = df[item].explode().value_counts().reset_index()
-                category_count.columns = [item, 'Count']
-                category_count_filtered = category_count[category_count[item] != 'tdk_ada_informasi']
-                
-                # Horizontal bar 
-                fig_bar_category = px.bar(category_count_filtered, x='Count', y=item, orientation='h', title=f'{item} Distribution (Horizontal Bar Chart)')
-                st.plotly_chart(fig_bar_category)
+def get_collections_with_prefix(prefix):
+    collections = db.list_collection_names()
+    filtered_collections = [coll for coll in collections if coll.startswith(prefix)]
+    return filtered_collections
 
 if not st.session_state.authentication_status:
     st.write("# Social Media Data Analysist 📈🚀")
@@ -468,10 +287,19 @@ if not st.session_state.authentication_status:
         except Exception as e:
             st.toast(e)
 else:
-    # st.title(" Data Analysis for Pasar Kerja")
-    st.write("# Mesin Klasifikasi Text 📈🚀")
-    st.write("##### Identifikasi dan Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
-    # st.write("-- --")
+    col = st.columns([4.5,1.3,1], vertical_alignment="center")
+
+    with col[0]:
+        st.write("## Mesin Klasifikasi Text 📈🚀")
+        st.write("###### Identifikasi dan Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
+    with col[1]:
+        popover = st.popover("Filter Metode", icon=":material/filter_alt:", use_container_width=True)
+        popover.checkbox("By Kamus Data", True)
+        popover.checkbox("By Pattern", True)
+        popover.checkbox("By Preceding & Succeeding", True)
+        popover.checkbox("Bobot Klasifikasi", True)
+    with col[2]:
+        st.button("Guideline", icon=":material/info:", use_container_width=True)
 
     st.markdown("""
         <style>
@@ -486,6 +314,11 @@ else:
             #editorCanvas > div.node-editor > .background{
                 background-color: rgb(113, 113, 113) !important;
             }
+                
+            .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(2) > div{
+                top: 90px;
+                position: sticky;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -498,20 +331,12 @@ else:
     arr = list(items)
     config = arr[0] if len(arr) > 0 else None
 
-    # image = Image.open('ilustrasi_old.png')
-    
-
-    # logo = st.image("logo.gif", caption="Sunrise by the mountains")
-    col1, col2 = st.columns(2, gap="large")
+    col1, col2 = st.columns([2,1.4], gap="medium")
 
     with col1:
-        # if(image):
-            # st.image(image)
-            # st.text("")
-            # st.text("")
-
+        # Klasifikasi Akun by Pattern
         with st.container(border=True):
-            st.subheader('Klasifikasi Akun :')
+            st.subheader('Klasifikasi By Pattern :')
             
             st.write('Kategori Akun Loker Mengandung Kata berikut :')
             
@@ -526,9 +351,55 @@ else:
                 value=data_default_akun_loker,
                 maxtags = 20,
                 key='1')
-            
+        
+        # Klasifikasi Lowongan & Non-Lowongan by Kamus Data
         with st.container(border=True):
-            st.subheader('Preceding & Succeeding :')
+            st.subheader('Klasifikasi By Kamus Data :')
+            st.write("Berikut klasifikasi berdasarkan Kamus Data.")
+
+            tab1, tab2 = st.tabs(["Lowongan", "Non-Lowongan"])
+
+            with tab1:
+                workbook = load_workbook('kamus_data.xlsx', read_only=True)
+
+                visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
+
+                if config:
+                    data_default_keywords = config["keywords"]
+                else:
+                    data_default_keywords = visible_sheets
+
+                keywords = st.multiselect(
+                    "Kamus Data Analisa Semantik terkait Lowongan :",
+                    options=visible_sheets,
+                    default=data_default_keywords
+                )
+
+                
+                left, right = st.columns([2,1])
+
+                with right:
+                    popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True)
+
+                    with open("kamus_data.xlsx", "rb") as file:
+                        popover.download_button(
+                            label="Unduh Kamus Data",
+                            data=file,
+                            file_name="kamus_data.xlsx",
+                            use_container_width=True,
+                            icon=":material/download:",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+
+                    if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
+                        update_kamus_data()
+                
+            with tab2:
+                st.write("Mohon Maaf, Klasifikasi Non-Lowongan masih tahap Pengembamgan.")
+        
+        # Klasifikasi Rengang Gaji & Kouta Lowongan by Preceding & Succeding
+        with st.container(border=True):
+            st.subheader('Klasifikasi By Preceding & Succeeding :')
             st.write("Berikut klasifikasi berdasarkan awalan dan akhiran :")
             tab1, tab2 = st.tabs(["Rentang Gaji", "Kouta Lowongan"])
 
@@ -571,140 +442,122 @@ else:
                     value=data_default_nilai_kouta["succ"],
                     key='succ_kouta'
                 )
+        
+        # Klasifikasi Bobot Klasifikasi
+        with st.container(border=True):
+            st.write('#### Bobot Klasifikasi (%)')
+            
+            st.write('Bobot ini menentukan nilai apakah suatu konten Lowongan / Non-Lowongan. Pastikan total dari semua bobot tidak lebih dari 100%.')
 
+            left, center, right = st.columns(3)
+
+            list_bobot = ["Akun Loker"] + keywords
+
+            for index, item in enumerate(list_bobot):
+                bobot_awal = 0
+
+                if(index==0):
+                    bobot_awal = 50.00
+                else:
+                    bobot_awal = 50/(len(list_bobot)-1)
+
+                if config and len(list_bobot) == len(config["nilai_bobot"]):
+                    bobot_awal = config["nilai_bobot"][index]
+
+                if index % 3 == 0:
+                    with left:
+                        nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+                elif index % 3 == 1:
+                    with center:
+                        nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+                else:
+                    with right:
+                        nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
+            
+            total = sum(nilai_bobot)
+
+            if round(total, 2) < 100:
+                st.write(f":red[*Data Bobot Kurang dari 100%. Tambahkan nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+            elif round(total, 2) > 100:
+                st.write(f":red[*Data Bobot Lebih dari 100%. Kurangi nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+            else:
+                st.write(":green[*Total Data Bobot Sudah PAS 100%]")
+    
     with col2:
         with st.container(border=True):
-            st.subheader('Klasifikasi Utama :')
-            st.write("Berikut klasifikasi berdasarkan Kamus Data.")
-
-            tab1, tab2 = st.tabs(["Lowongan", "Non-Lowongan"])
-
+            st.subheader('😎 ETL Klasifikasi :')
+            tab1, tab2, tab3 = st.tabs(["Data Source", "Data Target", "Alur Proses"])
+            
             with tab1:
-                workbook = load_workbook('kamus_data.xlsx', read_only=True)
+                st.write("##### Data Source")
+                data_source = st.selectbox("Tipe Source :", ["Local (Excel)", "Remote (OP Server)", "Remote (WL Server)"])
 
-                visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
+                is_server = data_source=="Remote (OP Server)"
+                
+                match data_source:
+                    case "Local (Excel)":
+                        uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+                    case "Remote (WL Server)":
+                        date_range = st.date_input('Start Date  - End Date :', [])
+                    
+                        if(len(date_range) > 1):
+                            from_date, to_date = date_range
+                        else:
+                            from_date, to_date = [datetime.now(), datetime.now()]
+                    case default:
+                        st.error("Not Implemented", icon=":material/info:")
 
-                if config:
-                    data_default_keywords = config["keywords"]
-                else:
-                    data_default_keywords = visible_sheets
-
-                keywords = st.multiselect(
-                    "Kamus Data Analisa Semantik terkait Lowongan :",
-                    options=visible_sheets,
-                    default=data_default_keywords
+            with tab2: 
+                st.write("##### Data Target")
+                data_target = st.radio("Mode Proses :", ["**Create (New)**", "**Update**", "**Preview (Only)**"], horizontal=True)
+                
+                match data_target:
+                    case "**Create (New)**":
+                        st.text_input("Masukan Nama Table :", placeholder="Contoh format : hasil_proses_xxx", help="Mohon Masukan Nama Database Dengan Format *hasil_proses_xxx*")
+                    case "**Update**":
+                        list_collection = get_collections_with_prefix("hasil_proses_")
+                        db_target = st.selectbox("Pilih DB Target", list_collection)
+                        list_kolom = db[db_target].find_one().keys()
+                        
+                        st.multiselect("Update by :", list_kolom)
+                    case "**Preview (Only)**":
+                        st.info("Data hasil proses akan langsung tampil di dashboard.", icon=":material/info:")
+                    case default:
+                        st.error("System Error")
+            
+            with tab3:
+                chunksize = st.slider(
+                    "Total Row Per Process :",
+                    value=500,
+                    min_value=100,
+                    max_value=2000,
+                    step=100
                 )
 
-                
-                left, right = st.columns(2)
+                st.write("Aktifkan Klasifikasi :")
+                selected_klasifikasi_aktif = []
+                options = ["Lowongan", "Non-Lowongan", "Akun", "Bobot Lowongan", "Rentang Gaji", "Kouta Lowongan"]
 
-                with right:
-                    popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True)
-
-                    with open("kamus_data.xlsx", "rb") as file:
-                        popover.download_button(
-                            label="Unduh Kamus Data",
-                            data=file,
-                            file_name="kamus_data.xlsx",
-                            use_container_width=True,
-                            icon=":material/download:",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        )
-
-                    if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
-                        update_kamus_data()
-                
-                with st.expander("Bobot Klasifikasi", icon=":material/percent:"):
-                    st.write('#### Bobot Klasifikasi (%)')
-                    
-                    st.write('Bobot ini menentukan nilai apakah suatu konten Lowongan / Non-Lowongan. Pastikan total dari semua bobot tidak lebih dari 100%.')
-
-                    left, center, right = st.columns(3)
-
-                    list_bobot = ["Akun Loker"] + keywords
-
-                    for index, item in enumerate(list_bobot):
-                        bobot_awal = 0
-
-                        if(index==0):
-                            bobot_awal = 50.00
-                        else:
-                            bobot_awal = 50/(len(list_bobot)-1)
-
-                        if config and len(list_bobot) == len(config["nilai_bobot"]):
-                            bobot_awal = config["nilai_bobot"][index]
-
-                        if index % 3 == 0:
-                            with left:
-                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
-                        elif index % 3 == 1:
-                            with center:
-                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
-                        else:
-                            with right:
-                                nilai_bobot.append(st.number_input(f"{item} :", value=bobot_awal))
-                    
-                    total = sum(nilai_bobot)
-
-                    if round(total, 2) < 100:
-                        st.write(f":red[*Data Bobot Kurang dari 100%. Tambahkan nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
-                    elif round(total, 2) > 100:
-                        st.write(f":red[*Data Bobot Lebih dari 100%. Kurangi nilai Bobot sebanyak {abs(round(100 - total, 2))} %.]")
+                proses_klasifikasi_col = st.columns(2)
+                for idx, option in enumerate(options):
+                    if idx % 2 == 0:
+                        with proses_klasifikasi_col[0]:
+                            if st.checkbox(option, value=True):
+                                selected_klasifikasi_aktif.append(option)
                     else:
-                        st.write(":green[*Total Data Bobot Sudah PAS 100%]")
+                        with proses_klasifikasi_col[1]:
+                            if st.checkbox(option, value=True):
+                                selected_klasifikasi_aktif.append(option)
 
-            with tab2:
-                st.write("Mohon Maaf, Klasifikasi Non-Lowongan masih tahap Pengembamgan.")
-
-
-        with st.container(border=True):
-            st.header('Proses Klasifikasi :')
-
-            data_source = st.radio("Data Source to Analyze :", ["***Local (Excel)***", "***Remote (OP Server)***", "***Remote (WL Server)***"], horizontal=True)
-
-            is_excel = data_source=="***Local (Excel)***"
-            is_server = data_source=="***Remote (OP Server)***"
+            with st.container(border=True):                       
+                progress_bar = st.progress(0, "Progress Chunk & Split Data ...")
+                sub_progress_bar = st.progress(0, "Progress Indentifikasi & Klasifikasi Text ...")
             
-            if(is_excel):
-                uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
-            elif(is_server):
-                st.write("Not Implemented")
-            else:
-                # Date slider range component
-                date_range = st.date_input('Start Date  - End Date :', [])
-                
-                if(len(date_range) > 1):
-                    from_date, to_date = date_range
-                else:
-                    from_date, to_date = [datetime.now(), datetime.now()]
-
-            data_target = st.radio("Data Target Hasil Proses :", ["***Buat Baru (Create)***", "***Sudah Ada (Update)***"], horizontal=True)
-                
-            chunksize = st.slider(
-                "Total Row Per Process :",
-                value=500,
-                min_value=100,
-                max_value=2000,
-                step=100
-            )
-
-            left, middle, right = st.columns(3)
-            
-            if(is_excel is not True and is_server is not True):
-                with right:
-                    if st.button("Export Data", type="secondary", icon="📥", use_container_width=True):
-                        base_url = "https://api.kurasi.media/new-export/456"
-
-                        dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
-
-                        show_dynamic_url(dynamic_url)
-        
-            st.text("")
 
             left, right = st.columns(2) 
 
             with left:
-                if st.button("Simpan Konfigurasi", type="secondary", icon=":material/save:", use_container_width=True):
+                if st.button("Simpan Konfig", type="secondary", icon=":material/save:", use_container_width=True):
                     
                     collection = db["config"]
                     
@@ -723,83 +576,82 @@ else:
                     st.toast("Berhasil Menyimpan Konfigurasi!")
 
             with right:
-                eksekusi = st.button("Mulai Proses Data", type="primary", icon="▶️", use_container_width=True)
+                eksekusi = st.button("Mulai Proses", type="primary", icon="▶️", use_container_width=True)
 
-            
-            # st.header('Result Proses :')
+        if(eksekusi):
+            # Proses By Data Source Type
+            match data_source:
+                case "Local (Excel)":
+                    if(uploaded_file):
+                        processed_chunks = []
+                        st.toast("Memulai proses ...")
 
-            # tab1, tab2 = st.tabs(["Insights Data Analysis", "Semantic Data Analysis"])
-            st.text("")
-            st.text("")
-
-            if(eksekusi):
-                st.toast("Memulai proses")
-                if is_excel and uploaded_file is not None:
-                    # Read the Excel file in chunks
-                    # processed_chunks = []
-
-                    with st.spinner('Memproses file excel ...'):
+                        progress_bar.progress(30, "Membaca Kamus Data ...")
                         kd = get_kamus_data()
+                        progress_bar.progress(50, "Membaca Excel File ...")
                         total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                        progress_bar.progress(80, "Menghitung Chunk File ...")
                         num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
 
-
-                    progress_bar = st.progress(0, f"Memproses {num_chunks} Chunk Data.")
-                    sub_progress_bar = st.progress(0, f"Menampilkan sub process ...")
-
-                    current_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-                    # collection_name = f"hasil_proses_{current_time}"
-                    collection_name = "hasil_proses_v2"
-
-                    for i in range(num_chunks):
-                        # Update the progress bar
-
-                        # Use skiprows to read specific chunks
-                        chunk = pd.read_excel(
-                            uploaded_file,
-                            sheet_name="Media Sosial",
-                            engine='openpyxl',
-                            skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
-                            nrows=chunksize,  # Read only 'chunksize' rows at a time
-                        )
+                        for i in range(num_chunks):
+                            chunk = pd.read_excel(
+                                uploaded_file,
+                                sheet_name="Media Sosial",
+                                engine='openpyxl',
+                                skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                                nrows=chunksize,  # Read only 'chunksize' rows at a time
+                            )
+                            progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+                            processed_chunk = process_chunk(chunk, kd, collection_name, sub_progress_bar)
+                            processed_chunks.append(processed_chunk)
+                            
+                            progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                            time.sleep(0.5)
                         
-                        # Process the current chunk
-                        # processed_chunk = process_chunk(chunk, kd)
-                        # processed_chunks.append(processed_chunk)
-                        
-                        progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
-
-                        process_chunk(chunk, kd, collection_name, sub_progress_bar)
-                        
-                        
-                        progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
-                        time.sleep(0.5)  # Pause for 2 seconds between chunks
-                    
-                    # Combine all processed chunks into a single DataFrame
-                    
-                    progress_bar.empty()
-
-                    st.toast("Sukses proses file", icon="ℹ️")
-                    
-                    # final_df = pd.concat(processed_chunks, ignore_index=True)
-                    # eksekusi_excel2(final_df, kd)
-                    
-                    # eksekusi_excel(tab1, tab2, df)
-                elif is_excel is not True and uploaded_file is None:
+                        final_df = pd.concat(processed_chunks, ignore_index=True)
+                        preview_result(kd, final_df)
+                    else:
+                        st.toast("Mohon upload file excel yang ingin diproses.")
+                case "Remote (WL Server)":
                     base_url = "https://api.kurasi.media/new-export/456"
                     dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
-
+                    file_bytes = None
+                    
+                    progress_bar.progress(20, "Mengambil file ke server ...")
                     try:
-                        with st.spinner('Mengambil data ke Server, mohon tunggu sebentar ...'):
-                            response = requests.get(dynamic_url)
-                            response.raise_for_status()
-
-                            file_bytes = BytesIO(response.content)
-                            df = pd.read_excel(file_bytes, sheet_name="Media Sosial")
-
-                        # eksekusi_excel(tab1, tab2, df)
-
+                        response = requests.get(dynamic_url)
+                        progress_bar.progress(40, "Cek Status Request ...")
+                        response.raise_for_status()
+                        progress_bar.progress(80, "Konversi Fle ke Format Byte ...")
+                        file_bytes = BytesIO(response.content)
+                        progress_bar.progress(100, "Selesai Konversi Fle ...")
                     except requests.exceptions.RequestException as e:
-                        st.error(f"Error: {e}")
-                else:
-                    st.toast("Ooppss, There's Something Wrong!", icon="ℹ️")
+                        st.toast(f"Gagal mengambil data server : {e}")
+                
+                    if file_bytes:
+                        st.toast("Memulai proses ...")
+
+                        progress_bar.progress(30, "Membaca Kamus Data ...")
+                        kd = get_kamus_data()
+                        progress_bar.progress(50, "Membaca Excel File ...")
+                        total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                        progress_bar.progress(80, "Menghitung Chunk File ...")
+                        num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
+                        
+                        for i in range(num_chunks):
+                            chunk = pd.read_excel(
+                                file_bytes,
+                                sheet_name="Media Sosial",
+                                engine='openpyxl',
+                                skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                                nrows=chunksize,  # Read only 'chunksize' rows at a time
+                            )
+                            progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+                            process_chunk(chunk, kd, collection_name, sub_progress_bar)
+                            
+                            progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                            time.sleep(0.5)
+                case default:
+                    st.toast("This data source not implmented yet.", icon="ℹ️")
+
+            progress_bar.progress(0, "Progress Chunk & Split Data ...")

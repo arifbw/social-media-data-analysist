@@ -65,8 +65,8 @@ db = client.medmon
 collection = db["hasil_proses_v1"]
 
 # Main Page Function
-st.write("# Analisa Data 🕵️‍♂️🚀")
-st.subheader("Semua Data Hasil Scraping & Klasifikasi")
+# st.write("# Analisa Data 🕵️‍♂️🚀")
+# st.subheader("Semua Data Hasil Scraping & Klasifikasi")
 
 
 def fetch_data(search_query, sort_by, sort_dir):
@@ -241,148 +241,174 @@ filter_option = {
     "jenis_akun": None,
     "sumber": None
 }
-
-top_section = st.columns([1,2.2], gap="small")
-list_kolom = collection.find_one().keys()
-
-with top_section[0]:
-    # Date filter options
-    with st.container(border=True, height=550):
-        st.write("##### Filter Data Table :")
-
-        search_query = st.text_input("Search Data Posting :", placeholder="Cari data postingan disini ...")
-
-        filter_option["list_kolom"] = st.multiselect("Kolom di tampilkan", list_kolom, ["Akun/Judul", "Konten", "Sumber"])
-
-        excluded_columns = ["_id", "UUID", "Topik", "Konten"]
-        columns = [key for key in list_kolom if key not in excluded_columns]
-        sort_by = st.selectbox("Sort By :", options=columns)
-        
-        sort_dir = st.radio("Direction", options=["🔼", "🔽"], horizontal=True)
-
-        filter_option["tanggal"] = st.date_input('Rentang Waktu :', [datetime.datetime(2024, 7, 1), datetime.datetime.now()])
-
-        # st.write("Jenis Akun :")
-        
-        with st.expander("Jenis Akun:", expanded=True):
-            selected_jenis_akun = []
-            options = ["Akun Loker", "Akun Netizen", "Akun Pers"]
-
-            for option in options:
-                if st.checkbox(option, value=True):
-                    selected_jenis_akun.append(option)
-
-        filter_option["jenis_akun"] = selected_jenis_akun
-
-        # st.write("Sumber Sosmed :")
-        with st.expander("Sumber Sosmed:", expanded=False):
-            selected_sumber = []
-            options = ["Twitter", "Instagram", "Facebook", "Tiktok", "Linkedin", "Youtube"]
-
-            for option in options:
-                if st.checkbox(option,value=True):
-                    selected_sumber.append(option)
-
-        filter_option["sumber"] = selected_sumber
-
-with top_section[1]:
-    with st.container(border=True):
-        st.write("##### Scrapping Data Table :")
-
-        with st.spinner('Preparing data.'):
-            try:
-                down_menu = st.columns([4.5,1.5,1], vertical_alignment="center")
-                
-                with down_menu[1]:
-                    page = st.number_input("Page", min_value=1, step=1, key="a")
-
-                with down_menu[2]:
-                    page_size = st.selectbox("Rows per page", options=[50, 100, 150, 200, 250])
-
-                # Display total documents and calculate total pages
-                with down_menu[0]:
-                    total_docs = collection.count_documents({})
-                    total_pages = round(total_docs / page_size)
-                    st.write(f"**Total Data**: {total_docs}, **Page**: {page} / {total_pages}")
-
-                # Fetch and display the data
-                df = fetch_data(search_query, sort_by, sort_dir, filter_option, page, page_size)
-                st.dataframe(df, use_container_width=True)
-
-                
-            except Exception as e:
-                st.info("")
-                st.error("Gagal Menyiapkan Data." + str(e))
-
 with st.container(border=True):
-    st.subheader("Visualisasi Data Grafik & Chart")
-    alur_waktu = st.slider("Alur Waktu Data : ",value=[datetime.datetime(2024, 7, 1, 0, 0), datetime.datetime(2024, 11, 1, 0, 0)], min_value=datetime.datetime(2024, 7, 1), max_value=datetime.datetime(2024, 12, 31, 1, 1), format="MM/DD/YY")
-    aw = [
-        date if isinstance(date, str) else date.strftime("%Y-%m-%d")
-        for date in alur_waktu
-    ]
+    col = st.columns([4.5,1], vertical_alignment="center")
+
+    with col[0]:
+        st.write("## Analisa Data 🕵️‍♂️🚀")
+        st.write("###### Semua Data Hasil Scraping & Klasifikasi")
+    with col[1]:
+        popover = st.popover("Export Data", icon=":material/download:", use_container_width=True)
+
+        popover.button("Dashboard (PPT)", icon=":material/animated_images:")
+        popover.button("Scraping (XLSX)", icon=":material/table:")
+
+    main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
-    top_chart = st.columns(3, gap="small")
-    # Top 10 Accounts with Most Followers
-    with top_chart[0]:
+    with main_tabs[0]:
         with st.container(border=True):
-            st.write("##### Top 10 :red[Akun Loker Follower] Terbanyak")
-            follower_by_account = get_top_accounts(aw)
-            st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
+            st.write("##### 📆 Timeline Data : ")
+            alur_waktu = st.slider("", label_visibility="collapsed", value=[datetime.datetime(2024, 7, 1, 0, 0), datetime.datetime(2024, 11, 1, 0, 0)], min_value=datetime.datetime(2024, 7, 1), max_value=datetime.datetime(2024, 12, 31, 1, 1), format="MM/DD/YY")
+        
+        aw = [
+            date if isinstance(date, str) else date.strftime("%Y-%m-%d")
+            for date in alur_waktu
+        ]
+        
+        top_chart = st.columns(3, gap="small")
+        # Top 10 Accounts with Most Followers
 
-    with top_chart[1]:
-        with st.container(border=True):
-            st.write("##### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
-            
-            # Query to count each source
-            source_count = collection.aggregate([
-                {"$match": {
-                    "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}
-                }},
-                {"$group": {"_id": "$Sumber", "Count": {"$sum": 1}}}
-            ])
-            source_count_df = pd.DataFrame(list(source_count))
-            source_count_df.columns = ['Sumber', 'Count']
+        with top_chart[0]:
+            with st.container(border=True):
+                with st.spinner('Preparing data.'):
+                    st.write("##### Top 10 :red[Akun Loker Follower] Terbanyak")
+                    follower_by_account = get_top_accounts(aw)
+                    st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
 
-            # Pie chart for source distribution
-            fig_source_pie = px.pie(source_count_df, names='Sumber', values='Count', title='Distribusi Sumber Sosial Media')
-            st.plotly_chart(fig_source_pie)
+        with top_chart[1]:
+            with st.container(border=True):
+                with st.spinner('Preparing data.'):
+                    st.write("##### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
+                    
+                    # Query to count each source
+                    source_count = collection.aggregate([
+                        {"$match": {
+                            "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}
+                        }},
+                        {"$group": {"_id": "$Sumber", "Count": {"$sum": 1}}}
+                    ])
+                    source_count_df = pd.DataFrame(list(source_count))
+                    source_count_df.columns = ['Sumber', 'Count']
 
-    # Total Posts by Account Classification
-    with top_chart[2]:
-        with st.container(border=True):
-            st.write("##### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
-            sentimen_count = get_total_posts_by_classification(aw)
-            sentimen_count.columns = ['Klasifikasi Akun', 'Count']
-            fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
-            st.plotly_chart(fig_sentimen)
+                    # Pie chart for source distribution
+                    fig_source_pie = px.pie(source_count_df, names='Sumber', values='Count', title='Distribusi Sumber Sosial Media')
+                    st.plotly_chart(fig_source_pie)
 
-# Loop through categories and generate charts
-for idx, item in enumerate(kd):
-    with st.container(border=True):
-        st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
+        # Total Posts by Account Classification
+        with top_chart[2]:
+            with st.container(border=True):
+                with st.spinner('Preparing data.'):
+                    st.write("##### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
+                    sentimen_count = get_total_posts_by_classification(aw)
+                    sentimen_count.columns = ['Klasifikasi Akun', 'Count']
+                    fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color='Klasifikasi Akun')
+                    st.plotly_chart(fig_sentimen)
 
-        # Get category count data
-        category_count = get_category_counts(item,aw)
-        category_count.columns = [item, 'Count']
+        # Loop through categories and generate charts
+        for idx, item in enumerate(kd):
+            with st.container(border=True):
+                with st.spinner('Preparing data.'):
+                    st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
 
-        col1, col2 = st.columns(2, gap="small")
+                    # Get category count data
+                    category_count = get_category_counts(item,aw)
+                    category_count.columns = [item, 'Count']
 
-        if idx % 3 == 0:
-            with col1:
-                st.dataframe(category_count, hide_index=True)
-            with col2:
-                fig_pie_category = px.pie(category_count, names=item, values='Count')
-                st.plotly_chart(fig_pie_category)
-        elif idx % 3 == 1:
-            with col1:
-                fig_bar_category = px.bar(category_count, x='Count', y=item, orientation='h')
-                st.plotly_chart(fig_bar_category)
-            with col2:
-                st.dataframe(category_count, hide_index=True)
-        else:
-            with col2:
-                fig_bar_category = px.bar(category_count, y='Count', x=item, orientation='v')
-                st.plotly_chart(fig_bar_category)
-            with col1:
-                st.dataframe(category_count, hide_index=True)
+                    col1, col2 = st.columns(2, gap="small")
+
+                    if idx % 3 == 0:
+                        with col1:
+                            st.dataframe(category_count, hide_index=True)
+                        with col2:
+                            fig_pie_category = px.pie(category_count, names=item, values='Count')
+                            st.plotly_chart(fig_pie_category)
+                    elif idx % 3 == 1:
+                        with col1:
+                            fig_bar_category = px.bar(category_count, x='Count', y=item, orientation='h')
+                            st.plotly_chart(fig_bar_category)
+                        with col2:
+                            st.dataframe(category_count, hide_index=True)
+                    else:
+                        with col2:
+                            fig_bar_category = px.bar(category_count, y='Count', x=item, orientation='v')
+                            st.plotly_chart(fig_bar_category)
+                        with col1:
+                            st.dataframe(category_count, hide_index=True)
+
+    with main_tabs[1]:
+        top_section = st.columns([1,2.2], gap="small")
+        list_kolom = collection.find_one().keys()
+
+        with top_section[0]:
+            # Date filter options
+            with st.container(border=True, height=700):
+                st.write("##### Filter Data Table :")
+
+                search_query = st.text_input("Search Data Posting :", placeholder="Cari data postingan disini ...")
+
+                filter_option["list_kolom"] = st.multiselect("Kolom di tampilkan", list_kolom, ["Akun/Judul", "Konten", "Sumber"])
+
+                excluded_columns = ["_id", "UUID", "Topik", "Konten"]
+                columns = [key for key in list_kolom if key not in excluded_columns]
+                sort_by = st.selectbox("Sort By :", options=columns)
+                
+                sort_dir = st.radio("Direction", options=["🔼", "🔽"], horizontal=True)
+
+                filter_option["tanggal"] = st.date_input('Rentang Waktu :', [datetime.datetime(2024, 7, 1), datetime.datetime.now()])
+
+                # st.write("Jenis Akun :")
+                
+                with st.expander("Jenis Akun:", expanded=True):
+                    selected_jenis_akun = []
+                    options = ["Akun Loker", "Akun Netizen", "Akun Pers"]
+
+                    for option in options:
+                        if st.checkbox(option, value=True):
+                            selected_jenis_akun.append(option)
+
+                filter_option["jenis_akun"] = selected_jenis_akun
+
+                # st.write("Sumber Sosmed :")
+                with st.expander("Sumber Sosmed:", expanded=False):
+                    selected_sumber = []
+                    options = ["Twitter", "Instagram", "Facebook", "Tiktok", "Linkedin", "Youtube"]
+
+                    for option in options:
+                        if st.checkbox(option,value=True):
+                            selected_sumber.append(option)
+
+                filter_option["sumber"] = selected_sumber
+
+        with top_section[1]:
+            with st.container(border=True):
+                st.write("##### Scrapping Data Table :")
+
+                with st.spinner('Preparing data.'):
+                    try:
+                        down_menu = st.columns([1,4,1.5])
+
+                        with down_menu[0]:
+                            page_size = st.selectbox("Rows per page", options=[50, 100, 150, 200, 250])
+                            total_docs = collection.count_documents({})
+                            total_pages = round(total_docs / page_size)
+
+                        with down_menu[1]:
+                            st.text("")
+
+                        with down_menu[2]:
+                            page = st.number_input("Page", min_value=1, max_value=total_pages, step=1, key="a")
+
+                        # Fetch and display the data
+                        df = fetch_data(search_query, sort_by, sort_dir, filter_option, page, page_size)
+                        st.dataframe(df, use_container_width=True, height=500)
+
+                        down_menu = st.columns([2,4,1])
+                        with down_menu[0]:
+                            st.write(f"**Total Data**: {total_docs}")
+                        with down_menu[1]:
+                            st.text("")
+                        with down_menu[2]:
+                            st.write(f"**Page**: {page} / {total_pages}")
+                    except Exception as e:
+                        st.info("")
+                        st.error("Gagal Menyiapkan Data." + str(e))

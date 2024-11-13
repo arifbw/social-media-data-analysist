@@ -273,11 +273,10 @@ fill.fore_color.rgb = RGBColor(173, 216, 230)  # Light blue color
 
 # Add the company name
 title = slide.shapes.title
-title.text = "Kabayan Group"
+title.text = "Weekly Report Pasker"
 
 # Add the presentation title
 subtitle = slide.placeholders[1]  # Subtitle placeholder (varies by layout)
-subtitle.text = "Weekly Report Pasker"
 
 @st.cache_data()
 def get_all_column():
@@ -421,6 +420,9 @@ with st.container(border=True):
             date if isinstance(date, str) else date.strftime("%Y-%m-%d")
             for date in alur_waktu
         ]
+
+        
+        subtitle.text = str(aw)
         
         with st.container(border=True):
             col = st.columns([5,1.2], vertical_alignment="center")

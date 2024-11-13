@@ -217,7 +217,7 @@ kd = ["Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman K
 
 # Function to save figure and add to PowerPoint
 def save_chart_to_slide(presentation, fig, title, df=None):
-    slide_layout = presentation.slide_layouts[5]  # Title slide layout
+    slide_layout = presentation.slide_layouts[1]  # Title slide layout
     slide = presentation.slides.add_slide(slide_layout)
     title_placeholder = slide.shapes.title
     title_placeholder.text = title
@@ -225,7 +225,7 @@ def save_chart_to_slide(presentation, fig, title, df=None):
     # Save Plotly figure as an image
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
         fig.write_image(tmpfile.name, format="png", scale=2, width=1200, height=800)
-        slide.shapes.add_picture(tmpfile.name, Inches(0), Inches(1.5), width=Inches(7.5))
+        slide.shapes.add_picture(tmpfile.name, Inches(0.7), Inches(1.2), width=Inches(5.5))
     
     if df is not None and not df.empty:
         add_table_from_df_to_slide(presentation=presentation, df=df, title=None, slide=slide)
@@ -233,10 +233,10 @@ def save_chart_to_slide(presentation, fig, title, df=None):
 def add_table_from_df_to_slide(presentation, df, title=None, slide=None):
     if not slide:
         # Add a slide with the specified layout
-        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
-        x, y, cx, cy = Inches(1.2), Inches(1.8), Inches(7.5), Inches(4)
+        slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+        x, y, cx, cy = Inches(1.2), Inches(1), Inches(7.5), Inches(4)
     else:
-        x, y, cx, cy = Inches(6.5), Inches(3), Inches(3.1), Inches(3.7)
+        x, y, cx, cy = Inches(6.5), Inches(1), Inches(2.7), Inches(3.1)
 
     if title:
         title_placeholder = slide.shapes.title
@@ -257,26 +257,18 @@ def add_table_from_df_to_slide(presentation, df, title=None, slide=None):
         for col_idx, value in enumerate(row):
             table.cell(row_idx, col_idx).text = str(value)
 
-    
+def ganti_text_di_ppt(slide, tag, data):
+    for shape in slide.shapes:
+        if shape.has_text_frame:
+            text = shape.text_frame.text
+            if '{{ ' + tag + ' }}' in text:
+                shape.text_frame.text = text.replace('{{ ' + tag + ' }}', data)  
     
 
 # Create PowerPoint Presentation
-presentation = Presentation()
+presentation = Presentation("template.pptx")
+opening_slide = presentation.slides[0]
 
-slide_layout = presentation.slide_layouts[0]
-slide = presentation.slides.add_slide(slide_layout)
-
-background = slide.background
-fill = background.fill
-fill.solid()
-fill.fore_color.rgb = RGBColor(173, 216, 230)  # Light blue color
-
-# Add the company name
-title = slide.shapes.title
-title.text = "Weekly Report Pasker"
-
-# Add the presentation title
-subtitle = slide.placeholders[1]  # Subtitle placeholder (varies by layout)
 
 @st.cache_data()
 def get_all_column():
@@ -421,8 +413,8 @@ with st.container(border=True):
             for date in alur_waktu
         ]
 
-        
-        subtitle.text = str(aw)
+        tgl_ppt = " s/d ".join(str(x) for x in aw)
+        ganti_text_di_ppt(opening_slide, "tanggal_data", f"({ tgl_ppt })")
         
         with st.container(border=True):
             col = st.columns([5,1.2], vertical_alignment="center")
@@ -546,19 +538,25 @@ with st.container(border=True):
                         with col2:
                             fig_pie_category = px.pie(category_count, names=item, values='Count', color_discrete_sequence=color_sequence)
                             st.plotly_chart(fig_pie_category)
-                            save_chart_to_slide(presentation, fig_pie_category, f'Distribusi Data {item}',category_count)
+                            
+                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
+                            save_chart_to_slide(presentation, fig_pie_category, f'Distribusi Data {item}', data_tbl_ppt)
                     elif idx % 3 == 1:
                         with col1:
                             fig_bar_category = px.bar(category_count, x='Count', y=item, orientation='h', color_discrete_sequence=color_sequence)
                             st.plotly_chart(fig_bar_category)
-                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}',category_count)
+                            
+                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
+                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}', data_tbl_ppt)
                         with col2:
                             st.dataframe(category_count, hide_index=True)
                     else:
                         with col2:
                             fig_bar_category = px.bar(category_count, y='Count', x=item, orientation='v', color_discrete_sequence=color_sequence)
                             st.plotly_chart(fig_bar_category)
-                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}',category_count)
+                            
+                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
+                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}', data_tbl_ppt)
                         with col1:
                             st.dataframe(category_count, hide_index=True)
         

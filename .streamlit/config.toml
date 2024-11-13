@@ -3,3 +3,6 @@ showSidebarNavigation = false
 
 [server]
 maxMessageSize = 1500
+
+[theme]
+base="light"

@@ -11,6 +11,7 @@ from datetime import datetime
 from streamlit_condition_tree import condition_tree, config_from_dataframe
 import time
 import pymongo
+from pymongo import UpdateOne
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
@@ -50,7 +51,7 @@ db = None
 dynamic_url = None
 job_categories = None
 uploaded_file = None
-collection_name = "hasil_proses_v1"
+collection_name = ""
 final_df = pd.DataFrame()
 
 # Variable2 Step Klasifikasi Berurutan
@@ -66,6 +67,21 @@ nilai_kouta = {
 }
 nilai_bobot = []
 selected_klasifikasi_aktif = []
+indonesian_numbers = [
+    "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", 
+    "sembilan", "sepuluh", "sebelas", "dua belas", "tiga belas", 
+    "empat belas", "lima belas", "enam belas", "tujuh belas", 
+    "delapan belas", "sembilan belas", "dua puluh", "tiga puluh", 
+    "empat puluh", "lima puluh", "seratus", "seribu"
+]
+word_to_num = {
+    'rb': 1000,
+    'ribu': 1000,
+    'jt': 1_000_000,
+    'juta': 1_000_000,
+    'yen': 100,
+    'm': 1_000_000,
+}
 
 # Function2 Klasifikasi
 def classify_job_category(caption, categories):
@@ -117,26 +133,48 @@ def classify_proceeding_succeeding(caption, pro_suc):
     pre_list = pro_suc['pre']
     succ_list = pro_suc['succ']
     
-    for pre in pre_list:
-        for succ in succ_list:
-            # Construct a regex pattern to match text between `pre` and `succ` exactly
-            pattern = re.escape(pre) + r' (.*?) ' + re.escape(succ)
-            match = re.search(pattern, caption)
-            
-            if match:
-                # Return the extracted text including the succeeding part
-                return match.group(1).strip() + ' ' + succ
+    # Split the caption into sentences using common sentence delimiters
+    # sentences = re.split(r'[.!?\n]', caption)
+    
+    pre_pattern = r"|".join(map(re.escape, pre_list))
+    succ_pattern = r"|".join(map(re.escape, succ_list))
 
-    return ""
 
+    pattern = (
+        r"(?i)\b(?:"
+        + pre_pattern
+        + r")\b"                          # Matches any item in 'pre' list as a whole word
+        + r"(?:\s+\w+){0,5}\s*"               # Optionally match intermediate words
+        + r"([\d.,]+(?:\s*(?:sampai|-)\s*[\d.,]+)?)"  # Capture numbers or ranges
+        + r"(?:\s*(?:" + succ_pattern + r"))?\b"       # Match any item in 'succ' list as optional
+    )
+
+    match = re.search(pattern, caption, re.IGNORECASE)
+    
+    if match:
+        # matched_str = match.group(0)
+        # result = re.sub(r"(?i)\bgaji\b", "", matched_str).strip()
+
+        result = match.group(0)
+        
+    else: 
+        result = ""
+
+    return result
+
+    # Return an empty string if no valid match is found
+    # return ""
 
 # Funciton2 Flow Pemrosesan
-def process_chunk(chunk, kd, collection_name, progress_bar):
+def process_chunk(chunk, kd, progress_bar):
     for index, row in chunk.iterrows():
         # Get the 'Konten' value once for this row
         konten_value = str(row['Konten'])
-        akun_value = str(row['Akun/Judul'])
-        is_pers_value = str(row['Jenis Akun']) == "Pers"
+
+        if "Akun" in selected_klasifikasi_aktif:
+            akun_value = str(row['Akun/Judul'])
+            is_pers_value = str(row['Jenis Akun']) == "Pers"
+        
         data_params_kalkulasi_persentase_lowongan = []
         
         if "Lowongan" in selected_klasifikasi_aktif:
@@ -158,16 +196,33 @@ def process_chunk(chunk, kd, collection_name, progress_bar):
             # Klasifikasikan Rentang Gaji by Succeding & Proceeding
             if "Rentang Gaji" not in chunk.columns:
                 chunk["Rentang Gaji"] = None
+
+            if "Digit Gaji (Clean)" not in chunk.columns:
+                chunk["Digit Gaji (Clean)"] = None
+
             result_3 = classify_proceeding_succeeding(konten_value, nilai_rentang_gaji)
             chunk.at[index, "Rentang Gaji"] = result_3
+            if result_3:
+                chunk.at[index, "Digit Gaji (Clean)"] = extract_salary(result_3)
+
             data_params_kalkulasi_persentase_lowongan.append(result_3)
             
         if "Kouta Lowongan" in selected_klasifikasi_aktif:
             # Klasifikasikan Kouta Lowongan by Succeding & Proceeding
             if "Kouta Lowongan" not in chunk.columns:
                 chunk["Kouta Lowongan"] = None
+
+            if "Digit Kouta (Clean)" not in chunk.columns:
+                chunk["Digit Kouta (Clean)"] = None
+
             result_4 = classify_proceeding_succeeding(konten_value, nilai_kouta)
             chunk.at[index, "Kouta Lowongan"] = result_4
+            
+            if result_4:
+                chunk.at[index, "Digit Kouta (Clean)"] = extract_quota(result_4)
+            else:
+                chunk.at[index, "Digit Kouta (Clean)"] = 1
+
             data_params_kalkulasi_persentase_lowongan.append(result_4)
 
         if "Akun" in selected_klasifikasi_aktif:
@@ -190,11 +245,7 @@ def process_chunk(chunk, kd, collection_name, progress_bar):
 
     progress_bar.progress(0, "Progress Indentifikasi & Klasifikasi Text ...")
 
-
     return chunk
-    # data_dict = chunk.to_dict(orient="records")
-    # collection = db[collection_name]
-    # collection.insert_many(data_dict)
 
 def get_kamus_data():
     kamus_data_xls = pd.ExcelFile('kamus_data.xlsx')
@@ -235,6 +286,90 @@ def get_kamus_data():
 
     return result
 
+def contains_number_or_word(sentence):
+    # Check if the sentence contains any digit
+    if re.search(r'\d', sentence):
+        return True
+    # Check if the sentence contains any number word from the list
+    for word in indonesian_numbers:
+        if re.search(r'\b' + re.escape(word) + r'\b', sentence, re.IGNORECASE):
+            return True
+    return False
+
+def clean_number(num_str):
+    # Ganti tanda koma menjadi titik jika digunakan sebagai desimal
+    num_str = num_str.replace(',', '.')
+    # Hapus titik yang berfungsi sebagai pemisah ribuan
+    if num_str.count('.') > 1 or ('.' in num_str and len(num_str.split('.')[-1]) > 2):
+        num_str = num_str.replace('.', '')
+    return num_str
+
+def extract_salary(text):
+    # Normalisasi teks ke huruf kecil
+    text = text.lower()
+
+    # Regex untuk menemukan angka (dengan atau tanpa desimal)
+    matches = re.findall(r'(\d+[\.,]?\d*)\s*(rb|ribu|jt|juta|yen|m)?', text)
+
+    # Jika tidak ada angka yang ditemukan, return 0
+    if not matches:
+        return 0
+
+    # Konversi angka ke nominal
+    salaries = []
+    for match in matches:
+        num_str, unit = match
+        num_str = clean_number(num_str)
+        num = float(num_str)
+
+        # Jika unit ditemukan, konversikan ke nilai
+        if unit:
+            multiplier = word_to_num.get(unit, 1)
+            num *= multiplier
+        else:
+            # Jika tidak ada satuan dan angka di bawah 1000, anggap itu ratusan ribu
+            if num < 1000:
+                num *= 1000
+
+        salaries.append(num)
+
+    # Jika ada range atau lebih dari satu gaji, cari rata-rata
+    if len(salaries) > 1:
+        avg_salary = sum(salaries) / len(salaries)
+    else:
+        avg_salary = salaries[0]
+
+    # Periksa konteks "per hari" atau "per jam"
+    if 'per hari' in text or '/ hari' in text:
+        avg_salary *= 22  # Anggap 22 hari dalam sebulan
+    elif 'per jam' in text or '/ jam' in text:
+        avg_salary *= 8 * 22  # Anggap 8 jam kerja per hari dan 22 hari kerja per bulan
+
+    if int(avg_salary) < 100000:
+        return None
+    else: 
+        return int(avg_salary)
+
+def extract_quota(text):
+    # Normalisasi teks ke huruf kecil
+    text = text.lower()
+
+    # Regex untuk menemukan angka (dengan atau tanpa pemisah ribuan)
+    matches = re.findall(r'(\d+[\.,]?\d*)', text)
+
+    # Jika tidak ada angka yang ditemukan, return 0
+    if not matches:
+        return 0
+
+    # Bersihkan angka dari tanda pemisah ribuan dan konversikan ke integer
+    quotas = []
+    for num_str in matches:
+        num_str = num_str.replace('.', '').replace(',', '')
+        num = int(num_str)
+        quotas.append(num)
+
+    # Ambil angka pertama yang ditemukan (karena biasanya kuota hanya satu angka yang dominan)
+    return quotas[0] if quotas else 1
 
 # Funtion2 Utilitas
 @st.cache_resource
@@ -275,10 +410,11 @@ def show_dynamic_url(url):
     st.write(f"{url}")
 
 @st.dialog("Hasil Proses Klasifikasi :", width="large")
-def preview_result(kd, data):
-    formatted_array = [item["kamus_data"] for item in kd]
-    # st.dataframe(data[['Akun/Judul','Konten', 'Url'] + formatted_array])
-    st.dataframe(data[['Akun/Judul','Konten', 'Url', 'Rentang Gaji', 'Kouta Lowongan'] ])
+def preview_result(kd, data_df):
+    # formatted_array = [item["kamus_data"] for item in kd]
+    # data_df = data[['Akun/Judul','Konten', 'Url', 'Rentang Gaji', 'Kouta Lowongan']]
+    # data_df = data[['Akun/Judul','Konten', 'Url'] + formatted_array]
+    st.dataframe(data_df)
 
 
     col = st.columns([3,1], gap="large")
@@ -288,7 +424,7 @@ def preview_result(kd, data):
             use_container_width=True,
             type="primary",
             icon=":material/download:",
-            data=convert_df_to_excel(data[['Akun/Judul','Konten', 'Url'] + formatted_array]),
+            data=convert_df_to_excel(data_df),
             file_name='hasil_proses.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
@@ -426,7 +562,9 @@ else:
     col1, col2 = st.columns([1.5,2], gap="large")
 
     with col2:
-        # Klasifikasi Akun by Pattern
+        st.write("### :red[Urutan Alur Kerja Klasifikasi :]")
+
+        # Sumber Klasifikasi
         with st.container(border=True):
             st.html(f"""
                 <div class="box-test">
@@ -434,8 +572,71 @@ else:
                     <div class="step">1</div>
                 </div>
             """)
+           
+            
+            col = st.columns([3,1.2], vertical_alignment="center")
+            
+            with col[0]:
+                st.subheader('Sumber Text (Input)')
+            with col[1]:
+                config_source = st.popover("Konfig", icon=":material/settings:", use_container_width=True)
+            
+            # Konfig Sumber
+            config_source.write("###### Total Row Per Process :")
 
-            st.subheader('Klasifikasi By Pattern :')
+            chunksize = config_source.slider(
+                "",
+                value=500,
+                min_value=100,
+                max_value=2000,
+                step=100,
+                label_visibility="collapsed"
+            )
+
+            config_source.write("###### Aktifkan Klasifikasi :")
+            options = ["Lowongan", "Non-Lowongan", "Akun", "Bobot Lowongan", "Rentang Gaji", "Kouta Lowongan"]
+
+            if config and "selected_klasifikasi_aktif" in config:
+                data_default_selected_klasifikasi_aktif = config["selected_klasifikasi_aktif"]
+            else:
+                data_default_selected_klasifikasi_aktif = options
+            
+            for idx, option in enumerate(options):
+                val_ska = True if option in data_default_selected_klasifikasi_aktif else False
+
+                if config_source.checkbox(option, value=val_ska):
+                    selected_klasifikasi_aktif.append(option)
+
+            st.write('Tentukan Sumber Text yang ingin di klasifikasi :')
+
+            data_source = st.selectbox("Tipe Source :", ["Local (Excel)", "Remote (OP Server)", "Remote (WL Server)"])
+
+            is_server = data_source=="Remote (OP Server)"
+            
+            match data_source:
+                case "Local (Excel)":
+                    uploaded_files = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"], accept_multiple_files=True)
+                case "Remote (WL Server)":
+                    date_range = st.date_input('Start Date  - End Date :', [])
+                
+                    if(len(date_range) > 1):
+                        from_date, to_date = date_range
+                    else:
+                        from_date, to_date = [datetime.now(), datetime.now()]
+                case default:
+                    st.error("Not Implemented", icon=":material/info:")
+
+
+        # Klasifikasi Akun by Pattern
+        with st.container(border=True):
+            st.html(f"""
+                <div class="box-test">
+                    <div class="line black"></div>
+                    <div class="step">2</div>
+                </div>
+            """)
+
+            st.subheader('Klasifikasi By Pattern')
             
             st.write('Kategori Akun Loker Mengandung Kata berikut :')
             
@@ -448,7 +649,7 @@ else:
                 label="",
                 text='Press enter to add more',
                 value=data_default_akun_loker,
-                maxtags = 20,
+                maxtags = 200,
                 key='1')
         
         # Klasifikasi Lowongan & Non-Lowongan by Kamus Data
@@ -456,11 +657,12 @@ else:
             st.html(f"""
                 <div class="box-test">
                     <div class="line black"></div>
-                    <div class="step">2</div>
+                    <div class="step">3</div>
                 </div>
             """)
 
-            st.subheader('Klasifikasi By Kamus Data :')
+            st.subheader('Klasifikasi By Kamus Data')
+
             st.write("Berikut klasifikasi berdasarkan Kamus Data.")
 
             tab1, tab2 = st.tabs(["Lowongan", "Non-Lowongan"])
@@ -471,7 +673,10 @@ else:
                 visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
 
                 if config:
-                    data_default_keywords = config["keywords"]
+                    if config["keywords"] == visible_sheets:
+                        data_default_keywords = config["keywords"]
+                    else: 
+                        data_default_keywords = visible_sheets
                 else:
                     data_default_keywords = visible_sheets
 
@@ -508,11 +713,12 @@ else:
             st.html(f"""
                 <div class="box-test">
                     <div class="line black"></div>
-                    <div class="step">3</div>
+                    <div class="step">4</div>
                 </div>
             """)
+            
+            st.subheader('Klasifikasi By Proceeding & Succeeding')
 
-            st.subheader('Klasifikasi By Proceeding & Succeeding :')
             st.write("Berikut klasifikasi berdasarkan awalan dan akhiran :")
             tab1, tab2 = st.tabs(["Rentang Gaji", "Kouta Lowongan"])
 
@@ -527,7 +733,7 @@ else:
                 nilai_rentang_gaji["pre"] = st_tags(
                     label="Kalimat Awalan :",
                     text='Press enter to add more',
-                    maxtags = 20,
+                    maxtags = 200,
                     value=data_default_nilai_rentang_gaji["pre"],
                     key='pre_gaji'
                 )
@@ -535,7 +741,7 @@ else:
                 nilai_rentang_gaji["succ"] = st_tags(
                     label="Kalimat Akhiran :",
                     text='Press enter to add more',
-                    maxtags = 20,
+                    maxtags = 200,
                     value=data_default_nilai_rentang_gaji["succ"],
                     key='succ_gaji'
                 )
@@ -543,7 +749,7 @@ else:
                 nilai_kouta["pre"] = st_tags(
                     label="Kalimat Awalan :",
                     text='Press enter to add more',
-                    maxtags = 20,
+                    maxtags = 200,
                     value=data_default_nilai_kouta["pre"],
                     key='pre_kouta'
                 )
@@ -551,7 +757,7 @@ else:
                 nilai_kouta["succ"] = st_tags(
                     label="Kalimat Akhiran :",
                     text='Press enter to add more',
-                    maxtags = 20,
+                    maxtags = 200,
                     value=data_default_nilai_kouta["succ"],
                     key='succ_kouta'
                 )
@@ -561,7 +767,7 @@ else:
             st.html(f"""
                 <div class="box-test">
                     <div class="line black"></div>
-                    <div class="step">4</div>
+                    <div class="step">5</div>
                 </div>
             """)
 
@@ -573,15 +779,16 @@ else:
 
             list_bobot = ["Akun Loker"] + keywords + ["Rentang Gaji", "Kouta Lowongan"]
 
+            # st.write(len(list_bobot))
             for index, item in enumerate(list_bobot):
                 bobot_awal = 0
 
                 if(index==0):
-                    bobot_awal = 50.00
+                    bobot_awal = 60.00
                 else:
-                    bobot_awal = 50/(len(list_bobot)-1)
+                    bobot_awal = 40/(len(list_bobot)-1)
 
-                if config and len(list_bobot) == len(config["nilai_bobot"]):
+                if config and "nilai_bobot" in config and len(list_bobot) == len(config["nilai_bobot"]):
                     bobot_awal = config["nilai_bobot"][index]
 
                 if index % 3 == 0:
@@ -608,84 +815,39 @@ else:
             st.html(f"""
                 <div class="box-test">
                     <div class="line white"></div>
-                    <div class="step">5</div>
+                    <div class="step">6</div>
                 </div>
             """)
-            st.write('#### Konfigurasi Proses Klasifikasi')
-
-            tab1, tab2, tab3 = st.tabs(["Data Source", "Data Target", "Alur Proses"])
-    
-            with tab1:
-                st.write("##### Data Source")
-                data_source = st.selectbox("Tipe Source :", ["Local (Excel)", "Remote (OP Server)", "Remote (WL Server)"])
-
-                is_server = data_source=="Remote (OP Server)"
-                
-                match data_source:
-                    case "Local (Excel)":
-                        uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
-                    case "Remote (WL Server)":
-                        date_range = st.date_input('Start Date  - End Date :', [])
-                    
-                        if(len(date_range) > 1):
-                            from_date, to_date = date_range
-                        else:
-                            from_date, to_date = [datetime.now(), datetime.now()]
-                    case default:
-                        st.error("Not Implemented", icon=":material/info:")
-
-            with tab2: 
-                st.write("##### Data Target")
-                data_target = st.radio("Mode Proses :", ["**Create (New)**", "**Update**", "**Preview (Only)**"], horizontal=True)
-                
-                match data_target:
-                    case "**Create (New)**":
-                        st.text_input("Masukan Nama Table :", placeholder="Contoh format : hasil_proses_xxx", help="Mohon Masukan Nama Database Dengan Format *hasil_proses_xxx*")
-                    case "**Update**":
-                        list_collection = get_collections_with_prefix("hasil_proses_")
-                        db_target = st.selectbox("Pilih DB Target", list_collection)
-                        list_kolom = db[db_target].find_one().keys()
-                        
-                        st.multiselect("Update by :", list_kolom)
-                    case "**Preview (Only)**":
-                        st.info("Data hasil proses akan langsung tampil di dashboard.", icon=":material/info:")
-                    case default:
-                        st.error("System Error")
             
-            with tab3:
-                chunksize = st.slider(
-                    "Total Row Per Process :",
-                    value=500,
-                    min_value=100,
-                    max_value=2000,
-                    step=100
-                )
+            st.subheader('Keluaran Proses (Ouput)')
+    
+            data_target = st.radio("Pilih Mode Output :", ["**Tampilkan Hasil**","**Masukan Database**"], horizontal=True)
+            
+            match data_target:
+                case "**Masukan Database**":
+                    list_collection = get_collections_with_prefix("hasil_proses_")
+                    db_target = st.selectbox("Pilih Tabel", list_collection + ["Create New Table"])
 
-                st.write("Aktifkan Klasifikasi :")
-                options = ["Lowongan", "Non-Lowongan", "Akun", "Bobot Lowongan", "Rentang Gaji", "Kouta Lowongan"]
-
-                if config and "selected_klasifikasi_aktif" in config:
-                    data_default_selected_klasifikasi_aktif = config["selected_klasifikasi_aktif"]
-                else:
-                    data_default_selected_klasifikasi_aktif = options
-                proses_klasifikasi_col = st.columns(2)
-                
-                for idx, option in enumerate(options):
-                    if idx % 2 == 0:
-                        with proses_klasifikasi_col[0]:
-                            val_ska = True if option in data_default_selected_klasifikasi_aktif else False
-                            if st.checkbox(option, value=val_ska):
-                                selected_klasifikasi_aktif.append(option)
+                    if db_target == "Create New Table":
+                        collection_name = st.text_input("Masukan Nama Table :", value="hasil_proses_", placeholder="Contoh format : hasil_proses_xxx", help="Mohon Masukan Nama Database Dengan Format *hasil_proses_xxx*")
                     else:
-                        with proses_klasifikasi_col[1]:
-                            val_ska = True if option in data_default_selected_klasifikasi_aktif else False
-                            if st.checkbox(option, value=val_ska):
-                                selected_klasifikasi_aktif.append(option)
+                        collection_name = db_target;
+                        mode_query = st.radio("Pilih Mode", ["Insert", "Upsert"], horizontal=True)
 
-                # st.write(selected_klasifikasi_aktif)
-            st.info("Pastikan Data Source & Data Target Sesuai. Tekan Mulai Proses jika sudah melakukan konfigurasi.", icon=":material/info:")
+                        if(mode_query=="Upsert"):
+                            list_kolom = db[db_target].find_one()
+                            
+                            if list_kolom:
+                                update_by = st.multiselect("Update by :", list_kolom.keys())
+                            else:
+                                update_by = []
+                                st.error("Table Belum Memiliki Data Kolom")
+                case "**Tampilkan Hasil**":
+                    st.info("Data hasil proses akan langsung tampil di dashboard. Data juga dapat di download dengan format Exel.", icon=":material/info:")
+                case default:
+                    st.error("System Error")
     with col1:
-        st.write("## Mesin Klasifikasi Text 🚀")
+        st.write("## Mesin Klasifikasi Text 📄 🚀")
         st.write("###### Klasifikasi Data Text tidak ter-struktur dengan akurat & presisi.")
 
         st.html(
@@ -727,42 +889,79 @@ else:
             # Proses By Data Source Type
             match data_source:
                 case "Local (Excel)":
-                    if(uploaded_file):
-                        processed_chunks = []
-                        st.toast("Memulai proses ...")
+                    for uploaded_file in uploaded_files:
+                        if(uploaded_file):
+                            processed_chunks = []
+                            st.toast(f"Memulai proses ... {uploaded_file.name}")
 
-                        progress_bar.progress(30, "Membaca Kamus Data ...")
-                        kd = get_kamus_data()
-                        progress_bar.progress(50, "Membaca Excel File ...")
-                        total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
-                        progress_bar.progress(80, "Menghitung Chunk File ...")
-                        num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
+                            progress_bar.progress(30, "Membaca Kamus Data ...")
+                            kd = get_kamus_data()
+                            progress_bar.progress(50, "Membaca Excel File ...")
+                            total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                            progress_bar.progress(80, "Menghitung Chunk File ...")
+                            num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
 
-                        for i in range(num_chunks):
-                            chunk = pd.read_excel(
-                                uploaded_file,
-                                sheet_name="Media Sosial",
-                                engine='openpyxl',
-                                skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
-                                nrows=chunksize,  # Read only 'chunksize' rows at a time
-                            )
-                            progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
-                            processed_chunk = process_chunk(chunk, kd, collection_name, sub_progress_bar)
-                            processed_chunks.append(processed_chunk)
-                            
-                            progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
-                            time.sleep(0.5)
-                        
-                        final_df = pd.concat(processed_chunks, ignore_index=True)
-                        preview_result(kd, final_df)
-                    else:
-                        st.toast("Mohon upload file excel yang ingin diproses.")
+                            for i in range(num_chunks):
+                                chunk = pd.read_excel(
+                                    uploaded_file,
+                                    sheet_name="Media Sosial",
+                                    engine='openpyxl',
+                                    skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                                    nrows=chunksize,  # Read only 'chunksize' rows at a time
+                                )
+                                progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+                                processed_chunk = process_chunk(chunk, kd, sub_progress_bar)
+
+                                progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+
+                                match data_target:
+                                    case "**Masukan Database**":
+                                        if mode_query == "Insert":
+                                            data_dict = processed_chunk.to_dict(orient="records")
+                                            collection = db[collection_name]
+                                            collection.insert_many(data_dict)
+                                        else:
+                                            data_dict = processed_chunk.to_dict(orient="records")
+                                            collection = db[collection_name]
+
+                                            operations = []
+
+                                            for record in data_dict:
+                                                # Create a filter based on the update_keys
+                                                update_by = update_by if update_by else ["UUID"]
+                                                filter_query = {key: record[key] for key in update_by if key in record}
+                                                
+                                                # Ensure the record is valid for upserting
+                                                if filter_query:
+                                                    operations.append(
+                                                        UpdateOne(
+                                                            filter_query,  # Match condition
+                                                            {'$set': record},  # Update with new data
+                                                            upsert=True     # Insert if not found
+                                                        )
+                                                    )
+                                                if operations:
+                                                    collection.bulk_write(operations)
+                                            # st.write("mode ini blm ter-implement")
+                                    case "**Tampilkan Hasil**":
+                                        processed_chunks.append(processed_chunk)
+                                        time.sleep(0.5)
+                                
+                                
+                            if data_target=="**Tampilkan Hasil**":
+                                final_df = pd.concat(processed_chunks, ignore_index=True)
+                                preview_result(kd, final_df)
+                            else:
+                                st.toast("Berhasil Memproses Klasifikasi.")
+                        else:
+                            st.toast("Mohon upload file excel yang ingin diproses.")
                 case "Remote (WL Server)":
                     base_url = "https://api.kurasi.media/new-export/456"
                     dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
                     file_bytes = None
                     
                     progress_bar.progress(20, "Mengambil file ke server ...")
+
                     try:
                         response = requests.get(dynamic_url)
                         progress_bar.progress(40, "Cek Status Request ...")
@@ -792,7 +991,7 @@ else:
                                 nrows=chunksize,  # Read only 'chunksize' rows at a time
                             )
                             progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
-                            process_chunk(chunk, kd, collection_name, sub_progress_bar)
+                            process_chunk(chunk, kd, sub_progress_bar)
                             
                             progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
                             time.sleep(0.5)

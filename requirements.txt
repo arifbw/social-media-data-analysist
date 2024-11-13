@@ -8,3 +8,5 @@ pymongo
 streamlit-authenticator
 streamlit-tags
 barfi
+pptx
+kaleido

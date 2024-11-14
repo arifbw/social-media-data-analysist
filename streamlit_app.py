@@ -438,24 +438,30 @@ def show_dynamic_url(url):
     st.write(f"{url}")
 
 @st.dialog("Hasil Proses Klasifikasi :", width="large")
-def preview_result(kd, data_df):
+def preview_result(kd, data_df, tipe=None):
     # formatted_array = [item["kamus_data"] for item in kd]
     # data_df = data[['Akun/Judul','Konten', 'Url', 'Rentang Gaji', 'Kouta Lowongan']]
     # data_df = data[['Akun/Judul','Konten', 'Url'] + formatted_array]
-    st.dataframe(data_df)
 
+    if(tipe=="json"):
+        st.write("#### Hasil Proses :")
+        
+        with st.container(border=True):
+            st.json(data_df.to_json(orient='records', lines=True), expanded=False)
+    else:
+        st.dataframe(data_df)
 
-    col = st.columns([3,1], gap="large")
-    with col[1]:
-        st.download_button(
-            label="Download",
-            use_container_width=True,
-            type="primary",
-            icon=":material/download:",
-            data=convert_df_to_excel(data_df),
-            file_name='hasil_proses.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        col = st.columns([3,1], gap="large")
+        with col[1]:
+            st.download_button(
+                label="Download",
+                use_container_width=True,
+                type="primary",
+                icon=":material/download:",
+                data=convert_df_to_excel(data_df),
+                file_name='hasil_proses.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
 
 @st.dialog("Upload New Data :")
 def update_kamus_data():
@@ -671,7 +677,7 @@ else:
                                 type="primary"
                             )
                     case "Masukan Manual":
-                        st.text_area(f"Masukan Text : ", placeholder=f"Masukan Text disini ... ")
+                        data_text_manual = st.text_area(f"Masukan Text : ", placeholder=f"Masukan Text disini ... ")
                     case default:
                         st.error("Not Implemented", icon=":material/info:")
 
@@ -1082,6 +1088,18 @@ else:
                                 
                                 progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
                                 time.sleep(0.5)
+                    case "Masukan Manual":
+                        # st.info("Not Implemented")
+                        # st.toast(data_text_manual)
+                        progress_bar.progress(20, "Membaca Kamus Data ...")
+                        kd = get_kamus_data()
+                        progress_bar.progress(60, "Memproses Text ...")
+                        chunk = pd.DataFrame([{"Konten": data_text_manual}])
+                        result = process_chunk(chunk, kd, sub_progress_bar)
+
+                        if data_target=="**Tampilkan Hasil**":
+                            preview_result(kd, result, tipe="json")
+
                     case default:
                         st.toast("This data source not implmented yet.", icon="ℹ️")
 

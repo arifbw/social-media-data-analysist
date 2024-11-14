@@ -19,6 +19,7 @@ import tempfile
 
 import requests
 import base64
+import io
 
 from pptx.dml.color import RGBColor
 
@@ -179,12 +180,18 @@ def fetch_data(search_query, sort_by, sort_dir, filters, page, page_size):
     sort_direction = ASCENDING if sort_dir == "🔼" else DESCENDING
 
     # Fetch filtered and sorted data from MongoDB
-    cursor = (
-        collection.find(query)
-        .sort(sort_by, sort_direction)
-        .skip(page * page_size)
-        .limit(page_size)
-    )
+    if(page_size!="all"):
+        cursor = (
+            collection.find(query)
+            .sort(sort_by, sort_direction)
+            .skip(page * page_size)
+            .limit(page_size)
+        )
+    else:
+        cursor = (
+            collection.find(query)
+            .sort(sort_by, sort_direction)
+        )
     data = list(cursor)
     
     # Convert to DataFrame
@@ -200,8 +207,9 @@ def fetch_data(search_query, sort_by, sort_dir, filters, page, page_size):
         df = df[available_columns]
 
     # Update DataFrame index to match pagination
-    start_index = page * page_size
-    df.index = range(start_index, start_index + len(df))
+    if(page_size!="all"):
+        start_index = page * page_size
+        df.index = range(start_index, start_index + len(df))
 
     return df
 
@@ -351,35 +359,70 @@ def get_category_counts(category_field,alur_waktu):
 
 @st.dialog("Download disini :")
 def save_ppt():
-    with st.spinner("Menyiapkan File PPT ke Google Drive ..."):
-        data_presentation = st.session_state["presentation"]
-        
-        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmpfile:
-            data_presentation.save(tmpfile.name)
-
-        # Read the file and encode in Base64
-            with open(tmpfile.name, "rb") as file:
-                encoded_file = base64.b64encode(file.read()).decode("utf-8")
-
-            # Prepare data payload
-            data = {
-                "folderId": "1bMhZ6lnZQLO2hR2w73GQ1cEvD5VNsOnu",
-                "fileData": encoded_file,
-                "fileName": "dashboard_weekly_presentation_pasker.pptx"
-            }
-
-            # Endpoint URL
-            endpoint = "https://script.google.com/macros/s/AKfycbypnLPxFKWlAFWcnx6U7OR28rsADxWBe5r2Np2UTjKMmQpQLYmzY0YiZw2lUDtTGh7_/exec?rute=upload_ppt"
+    try:
+        with st.spinner("Menyiapkan File PPT ke Google Drive ..."):
+            data_presentation = st.session_state["presentation"]
             
-            # Send POST request
-            response = requests.post(endpoint, json=data)
-    
-    data_resp = response.json()
-    url = data_resp.get('url', 'No URL returned')
+            with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmpfile:
+                data_presentation.save(tmpfile.name)
 
-    # st.write(data_resp)
-    st.success("File Siap di Download", icon=":material/check_circle:")
-    st.link_button("Lihat PPT", url, icon=":material/description:", type="primary", use_container_width=True)
+            # Read the file and encode in Base64
+                with open(tmpfile.name, "rb") as file:
+                    encoded_file = base64.b64encode(file.read()).decode("utf-8")
+
+                # Prepare data payload
+                data = {
+                    "folderId": "1bMhZ6lnZQLO2hR2w73GQ1cEvD5VNsOnu",
+                    "fileData": encoded_file,
+                    "fileName": "dashboard_weekly_presentation_pasker.pptx"
+                }
+
+                # Endpoint URL
+                endpoint = "https://script.google.com/macros/s/AKfycbypnLPxFKWlAFWcnx6U7OR28rsADxWBe5r2Np2UTjKMmQpQLYmzY0YiZw2lUDtTGh7_/exec?rute=upload_ppt"
+                
+                # Send POST request
+                response = requests.post(endpoint, json=data)
+        
+        data_resp = response.json()
+        url = data_resp.get('url', 'No URL returned')
+
+        # st.write(data_resp)
+        st.success("File Siap di Download", icon=":material/check_circle:")
+        st.link_button("Lihat PPT", url, icon=":material/description:", type="primary", use_container_width=True)
+    
+    except:
+        st.info("Mohon menunggu sampai data dashboard selesai ter-muat.", icon=":material/info:")
+
+@st.dialog("Download disini :")
+def save_excel():
+    try:
+        fo = st.session_state["filter_option"]
+        mv = st.session_state["max_value"]
+        # st.write(fo)
+        rd = st.slider("Rentang Data : ", value=[1,5000], min_value=1, max_value=mv)
+        
+        with st.spinner("Menyiapkan File Excel ..."):
+            df = fetch_data(search_query=None, sort_by="Tanggal Publikasi", sort_dir="🔼", filters=fo, page=rd[0], page_size=rd[1])
+
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+
+            buffer.seek(0)
+
+            # Download button for the Excel file
+            st.download_button(
+                label="Download Excel File",
+                data=buffer,
+                file_name="mongodb_data.xlsx",
+                type="primary",
+                icon=":material/download:",
+                use_container_width=True,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        # st.write(df)
+    except:
+        st.info("Mohon menunggu sampai data dashboard dan data scraping selesai ter-muat.", icon=":material/info:")
 
 filter_option = {
     "list_kolom": None,
@@ -399,7 +442,8 @@ with st.container(border=True):
         if popover.button("Dashboard (PPT)", icon=":material/animated_images:"):
             save_ppt()
 
-        popover.button("Scraping (XLSX)", icon=":material/table:")
+        if popover.button("Scraping (XLSX)", icon=":material/table:"):
+            save_excel()
 
     main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
@@ -635,6 +679,8 @@ with st.container(border=True):
                             page = st.number_input("Page", min_value=1, max_value=total_pages, step=1, key="a")
 
                         # Fetch and display the data
+                        st.session_state["filter_option"] = filter_option
+                        st.session_state["max_value"] = total_docs
                         df = fetch_data(search_query, sort_by, sort_dir, filter_option, page, page_size)
                         st.dataframe(df, use_container_width=True, height=500)
 

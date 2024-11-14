@@ -17,6 +17,7 @@ import yaml
 from yaml.loader import SafeLoader
 import page_service as ps
 from streamlit_tags import st_tags
+import json
 
 # setup page
 st.set_page_config(
@@ -404,6 +405,33 @@ def get_collections_with_prefix(prefix):
     return filtered_collections
 
 
+def execute_query_builder(db_source, fields, sort_fields, sort_order_value):
+    result = None
+    
+    try:
+        collection = db[db_source]
+        # Parse the query input as JSON
+        query = json.loads(query_input)
+
+        # Construct projection for selected fields
+        projection = {field: 1 for field in fields} if fields else None
+
+        # Construct sort criteria
+        sort_criteria = [(field, sort_order_value) for field in sort_fields] if sort_fields else None
+
+        # Execute the query
+        cursor = collection.find(query, projection)
+        if sort_criteria:
+            cursor = cursor.sort(sort_criteria)
+        results_list = list(cursor.limit(total_limit))
+
+        result = results_list
+
+    except json.JSONDecodeError:
+        result = {"msg": "Error."}
+
+    return result
+
 # Modal & Dialog
 @st.dialog("Download disini :")
 def show_dynamic_url(url):
@@ -563,6 +591,7 @@ else:
 
     with col2:
         st.write("### :red[Urutan Alur Kerja Klasifikasi :]")
+        list_collection = get_collections_with_prefix("hasil_proses_")
 
         # Sumber Klasifikasi
         with st.container(border=True):
@@ -574,14 +603,17 @@ else:
             """)
            
             
-            col = st.columns([3,1.2], vertical_alignment="center")
+            col = st.columns([2,1.2,1.2], vertical_alignment="bottom")
             
             with col[0]:
                 st.subheader('Sumber Text (Input)')
             with col[1]:
-                config_source = st.popover("Konfig", icon=":material/settings:", use_container_width=True)
-            
+                mode_klasifikasi = st.selectbox("", ["Proses Baru", "Proses Ulang"], label_visibility="collapsed")
             # Konfig Sumber
+            with col[2]:
+                config_source = st.popover("Konfig", icon=":material/settings:", use_container_width=True)
+
+            
             config_source.write("###### Total Row Per Process :")
 
             chunksize = config_source.slider(
@@ -607,26 +639,80 @@ else:
                 if config_source.checkbox(option, value=val_ska):
                     selected_klasifikasi_aktif.append(option)
 
-            st.write('Tentukan Sumber Text yang ingin di klasifikasi :')
-
-            data_source = st.selectbox("Tipe Source :", ["Local (Excel)", "Remote (OP Server)", "Remote (WL Server)"])
-
-            is_server = data_source=="Remote (OP Server)"
             
-            match data_source:
-                case "Local (Excel)":
-                    uploaded_files = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"], accept_multiple_files=True)
-                case "Remote (WL Server)":
-                    date_range = st.date_input('Start Date  - End Date :', [])
+            if mode_klasifikasi=="Proses Baru":
+                # st.write('Tentukan Sumber Text yang ingin di klasifikasi :')
+
+                data_source = st.radio("Tipe Source :", ["Data Lokal", "Data Server", "Masukan Manual"], horizontal=True)
                 
-                    if(len(date_range) > 1):
-                        from_date, to_date = date_range
-                    else:
-                        from_date, to_date = [datetime.now(), datetime.now()]
-                case default:
-                    st.error("Not Implemented", icon=":material/info:")
+                match data_source:
+                    case "Data Lokal":
+                        uploaded_files = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"], accept_multiple_files=True)
+                    case "Data Server":
+                        col = st.columns([3.1,1], vertical_alignment="bottom")
+                        
+                        with col[0]:
+                            date_range = st.date_input('Start Date  - End Date :', [])
+                    
+                            if(len(date_range) > 1):
+                                from_date, to_date = date_range
+                            else:
+                                from_date, to_date = [datetime.now(), datetime.now()]
+                        with col[1]:
+                            base_url = "https://api.kurasi.media/new-export/456"
+                            dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
 
+                            st.link_button(
+                                label="Lihat Data",
+                                url=dynamic_url,
+                                use_container_width=True,
+                                icon=":material/visibility:",
+                                disabled=not date_range,
+                                type="primary"
+                            )
+                    case "Masukan Manual":
+                        st.text_area(f"Masukan Text : ", placeholder=f"Masukan Text disini ... ")
+                    case default:
+                        st.error("Not Implemented", icon=":material/info:")
 
+            else:
+                col = st.columns(2)
+                
+                with col[0]:
+                    db_source = st.selectbox("Pilih Tabel : ", list_collection)
+                    list_kolom = db[db_source].find_one().keys() if db[db_source].find_one() else []
+                    sort_fields = st.multiselect("Sort By:", list_kolom)
+
+                with col[1]:
+                    fields = st.multiselect("Select Data :", list_kolom, key="kolom_source")
+                    sort_order = st.radio("Sort order:", ["Ascending", "Descending"], horizontal=True)
+                    sort_order_value = 1 if sort_order == "Ascending" else -1
+
+                col2 = st.columns([4,1])
+
+                with col2[0]:
+                    example_data = '{"$and":[{"Lokasi Kota":{"$exists":false}},{"Jabatan":{"$exists":false}}]}'
+                    query_input = st.text_area("Enter your MongoDB query as JSON:", value=example_data)
+
+                with col2[1]:
+                    total_limit = st.number_input("Limit Data :", value=10)
+
+                st.text("")
+                st.text("")
+
+                col3 = st.columns([3,1.3])
+
+                with col3[1]:
+                    test_query = st.button("Test Query", icon=":material/play_arrow:", use_container_width=True, type='primary')
+
+                if test_query:
+                    with st.container(border=True):
+                        # Display results
+                        st.write("Query Results:") 
+                        result_list = execute_query_builder(db_source, fields, sort_fields, sort_order_value)
+                        st.json(result_list, expanded=False)
+
+                        
         # Klasifikasi Akun by Pattern
         with st.container(border=True):
             st.html(f"""
@@ -825,13 +911,12 @@ else:
             
             match data_target:
                 case "**Masukan Database**":
-                    list_collection = get_collections_with_prefix("hasil_proses_")
                     db_target = st.selectbox("Pilih Tabel", list_collection + ["Create New Table"])
 
                     if db_target == "Create New Table":
                         collection_name = st.text_input("Masukan Nama Table :", value="hasil_proses_", placeholder="Contoh format : hasil_proses_xxx", help="Mohon Masukan Nama Database Dengan Format *hasil_proses_xxx*")
                     else:
-                        collection_name = db_target;
+                        collection_name = db_target
                         mode_query = st.radio("Pilih Mode", ["Insert", "Upsert"], horizontal=True)
 
                         if(mode_query=="Upsert"):
@@ -883,119 +968,185 @@ else:
                 st.toast("Berhasil Menyimpan Konfigurasi!")
 
         with right:
-            eksekusi = st.button("Mulai Proses", type="primary", icon="▶️", use_container_width=True, disabled=not is_superadmin)
+            eksekusi = st.button("Jalankan Proses", type="primary", icon="▶️", use_container_width=True, disabled=not is_superadmin)
 
         if(eksekusi):
             # Proses By Data Source Type
-            match data_source:
-                case "Local (Excel)":
-                    for uploaded_file in uploaded_files:
-                        if(uploaded_file):
-                            processed_chunks = []
-                            st.toast(f"Memulai proses ... {uploaded_file.name}")
+            if mode_klasifikasi=="Proses Baru":
+                match data_source:
+                    case "Data Lokal":
+                        for uploaded_file in uploaded_files:
+                            if(uploaded_file):
+                                processed_chunks = []
+                                st.toast(f"Memulai proses ... {uploaded_file.name}")
+
+                                progress_bar.progress(30, "Membaca Kamus Data ...")
+                                kd = get_kamus_data()
+                                progress_bar.progress(50, "Membaca Excel File ...")
+                                total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                                progress_bar.progress(70, "Menghitung Chunk File ...")
+                                num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
+
+                                for i in range(num_chunks):
+                                    chunk = pd.read_excel(
+                                        uploaded_file,
+                                        sheet_name="Media Sosial",
+                                        engine='openpyxl',
+                                        skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                                        nrows=chunksize,  # Read only 'chunksize' rows at a time
+                                    )
+                                    progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+                                    processed_chunk = process_chunk(chunk, kd, sub_progress_bar)
+
+                                    progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+
+                                    match data_target:
+                                        case "**Masukan Database**":
+                                            if mode_query == "Insert":
+                                                data_dict = processed_chunk.to_dict(orient="records")
+                                                collection = db[collection_name]
+                                                collection.insert_many(data_dict)
+                                            else:
+                                                data_dict = processed_chunk.to_dict(orient="records")
+                                                collection = db[collection_name]
+
+                                                operations = []
+
+                                                for record in data_dict:
+                                                    # Create a filter based on the update_keys
+                                                    update_by = update_by if update_by else ["UUID"]
+                                                    filter_query = {key: record[key] for key in update_by if key in record}
+                                                    
+                                                    # Ensure the record is valid for upserting
+                                                    if filter_query:
+                                                        operations.append(
+                                                            UpdateOne(
+                                                                filter_query,  # Match condition
+                                                                {'$set': record},  # Update with new data
+                                                                upsert=True     # Insert if not found
+                                                            )
+                                                        )
+
+                                                if operations:
+                                                    collection.bulk_write(operations)
+                                                # st.write("mode ini blm ter-implement")
+                                        case "**Tampilkan Hasil**":
+                                            processed_chunks.append(processed_chunk)
+                                            time.sleep(0.5)
+                                    
+                                    
+                                if data_target=="**Tampilkan Hasil**":
+                                    final_df = pd.concat(processed_chunks, ignore_index=True)
+                                    preview_result(kd, final_df)
+                                else:
+                                    st.toast("Berhasil Memproses Klasifikasi.")
+                            else:
+                                st.toast("Mohon upload file excel yang ingin diproses.")
+                    case "Data Server":
+                        base_url = "https://api.kurasi.media/new-export/456"
+                        dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
+                        file_bytes = None
+                        
+                        progress_bar.progress(20, "Mengambil file ke server ...")
+
+                        try:
+                            response = requests.get(dynamic_url)
+                            progress_bar.progress(40, "Cek Status Request ...")
+                            response.raise_for_status()
+                            progress_bar.progress(80, "Konversi Fle ke Format Byte ...")
+                            file_bytes = BytesIO(response.content)
+                            progress_bar.progress(100, "Selesai Konversi Fle ...")
+                        except requests.exceptions.RequestException as e:
+                            st.toast(f"Gagal mengambil data server : {e}")
+                    
+                        if file_bytes:
+                            st.toast("Memulai proses ...")
 
                             progress_bar.progress(30, "Membaca Kamus Data ...")
                             kd = get_kamus_data()
                             progress_bar.progress(50, "Membaca Excel File ...")
-                            total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                            total_rows = pd.read_excel(file_bytes, engine='openpyxl', sheet_name="Media Sosial").shape[0]
                             progress_bar.progress(80, "Menghitung Chunk File ...")
                             num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
-
+                            
                             for i in range(num_chunks):
                                 chunk = pd.read_excel(
-                                    uploaded_file,
+                                    file_bytes,
                                     sheet_name="Media Sosial",
                                     engine='openpyxl',
                                     skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
                                     nrows=chunksize,  # Read only 'chunksize' rows at a time
                                 )
                                 progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
-                                processed_chunk = process_chunk(chunk, kd, sub_progress_bar)
-
+                                process_chunk(chunk, kd, sub_progress_bar)
+                                
                                 progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                                time.sleep(0.5)
+                    case default:
+                        st.toast("This data source not implmented yet.", icon="ℹ️")
 
-                                match data_target:
-                                    case "**Masukan Database**":
-                                        if mode_query == "Insert":
-                                            data_dict = processed_chunk.to_dict(orient="records")
-                                            collection = db[collection_name]
-                                            collection.insert_many(data_dict)
-                                        else:
-                                            data_dict = processed_chunk.to_dict(orient="records")
-                                            collection = db[collection_name]
-
-                                            operations = []
-
-                                            for record in data_dict:
-                                                # Create a filter based on the update_keys
-                                                update_by = update_by if update_by else ["UUID"]
-                                                filter_query = {key: record[key] for key in update_by if key in record}
-                                                
-                                                # Ensure the record is valid for upserting
-                                                if filter_query:
-                                                    operations.append(
-                                                        UpdateOne(
-                                                            filter_query,  # Match condition
-                                                            {'$set': record},  # Update with new data
-                                                            upsert=True     # Insert if not found
-                                                        )
-                                                    )
-                                                if operations:
-                                                    collection.bulk_write(operations)
-                                            # st.write("mode ini blm ter-implement")
-                                    case "**Tampilkan Hasil**":
-                                        processed_chunks.append(processed_chunk)
-                                        time.sleep(0.5)
-                                
-                                
-                            if data_target=="**Tampilkan Hasil**":
-                                final_df = pd.concat(processed_chunks, ignore_index=True)
-                                preview_result(kd, final_df)
-                            else:
-                                st.toast("Berhasil Memproses Klasifikasi.")
-                        else:
-                            st.toast("Mohon upload file excel yang ingin diproses.")
-                case "Remote (WL Server)":
-                    base_url = "https://api.kurasi.media/new-export/456"
-                    dynamic_url = generate_url(base_url, from_date.strftime("%Y-%m-%d"), to_date.strftime("%Y-%m-%d"))
-                    file_bytes = None
-                    
-                    progress_bar.progress(20, "Mengambil file ke server ...")
-
-                    try:
-                        response = requests.get(dynamic_url)
-                        progress_bar.progress(40, "Cek Status Request ...")
-                        response.raise_for_status()
-                        progress_bar.progress(80, "Konversi Fle ke Format Byte ...")
-                        file_bytes = BytesIO(response.content)
-                        progress_bar.progress(100, "Selesai Konversi Fle ...")
-                    except requests.exceptions.RequestException as e:
-                        st.toast(f"Gagal mengambil data server : {e}")
+                progress_bar.progress(0, "Progress Chunk & Split Data ...")
+            else:
+                # Display results
+                processed_chunks = []
+                progress_bar.progress(10, "Membaca Kamus Data ...")
+                kd = get_kamus_data()
+                progress_bar.progress(35, "Mendapatkan Source Data ...")
+                result_list = execute_query_builder(db_source, fields, sort_fields, sort_order_value)
+                total_rows = len(result_list)
+                progress_bar.progress(60, "Menghitung Chunk File ...")
+                num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
                 
-                    if file_bytes:
-                        st.toast("Memulai proses ...")
+                for i in range(num_chunks):
+                    chunk_start = i * chunksize
+                    chunk_end = chunk_start + chunksize
+                    chunk = result_list[chunk_start:chunk_end]
 
-                        progress_bar.progress(30, "Membaca Kamus Data ...")
-                        kd = get_kamus_data()
-                        progress_bar.progress(50, "Membaca Excel File ...")
-                        total_rows = pd.read_excel(file_bytes, engine='openpyxl', sheet_name="Media Sosial").shape[0]
-                        progress_bar.progress(80, "Menghitung Chunk File ...")
-                        num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
-                        
-                        for i in range(num_chunks):
-                            chunk = pd.read_excel(
-                                file_bytes,
-                                sheet_name="Media Sosial",
-                                engine='openpyxl',
-                                skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
-                                nrows=chunksize,  # Read only 'chunksize' rows at a time
-                            )
-                            progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
-                            process_chunk(chunk, kd, sub_progress_bar)
-                            
-                            progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+                    chunk_df = pd.DataFrame(chunk)
+
+                    progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
+                    processed_chunk = process_chunk(chunk_df, kd, sub_progress_bar)
+
+                    progress_bar.progress((i + 1) / num_chunks, f"Mengirim data ke server {i + 1}/{num_chunks} ...")
+
+                    match data_target:
+                        case "**Masukan Database**":
+                            if mode_query == "Insert":
+                                data_dict = processed_chunk.to_dict(orient="records")
+                                collection = db[collection_name]
+                                collection.insert_many(data_dict)
+                            else:
+                                data_dict = processed_chunk.to_dict(orient="records")
+                                collection = db[collection_name]
+
+                                operations = []
+
+                                for record in data_dict:
+                                    # Create a filter based on the update_keys
+                                    update_by = update_by if update_by else ["UUID"]
+                                    filter_query = {key: record[key] for key in update_by if key in record}
+                                    
+                                    # Ensure the record is valid for upserting
+                                    if filter_query:
+                                        operations.append(
+                                            UpdateOne(
+                                                filter_query,  # Match condition
+                                                {'$set': record},  # Update with new data
+                                                upsert=True     # Insert if not found
+                                            )
+                                        )
+
+                                if operations:
+                                    collection.bulk_write(operations)
+                                # st.write("mode ini blm ter-implement")
+                        case "**Tampilkan Hasil**":
+                            processed_chunks.append(processed_chunk)
                             time.sleep(0.5)
-                case default:
-                    st.toast("This data source not implmented yet.", icon="ℹ️")
+                        
+                if data_target=="**Tampilkan Hasil**":
+                    final_df = pd.concat(processed_chunks, ignore_index=True)
+                    preview_result(kd, final_df)
+                else:
+                    st.toast("Berhasil Memproses Klasifikasi.")
 
-            progress_bar.progress(0, "Progress Chunk & Split Data ...")
+                progress_bar.progress(0, "Progress Chunk & Split Data ...")

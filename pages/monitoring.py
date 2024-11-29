@@ -356,7 +356,7 @@ def get_slider_range(option):
                 today.replace(hour=23, minute=59, second=59, microsecond=0)]
     elif option == "Rentang Waktu":
         # Default range for custom range
-        return [datetime(2024, 7, 1), datetime(2024, 11, 1)]
+        return [datetime(2024, 7, 1), datetime.now()]
     return None
 
 @st.cache_data()
@@ -638,36 +638,40 @@ def draw_chart(idx, item, aw):
                 # category_count.columns = [item, 'Count']
                 category_count.columns = [item, 'Count'] if item != "Rentang Gaji" else ['Count', item]
 
-                # Input for limiting data points
-                data_limit = st.number_input(
-                    "Tampilkan jumlah data maksimal:",
-                    min_value=1,
-                    max_value=len(category_count),
-                    value=len(category_count),
-                    step=1,
-                    key=f"data_limit_{idx}"
-                )
-                category_count = category_count.head(data_limit)
-                
-                list_of_chart = [
-                    "Pie Chart",
-                    "Horizontal Bar Chart",
-                    "Vertical Bar Chart",
-                    "Scatter Plot",
-                    "Line Chart",
-                    "Area Chart",
-                    "Funnel Chart",
-                    "Treemap",
-                    "Radar Chart",
-                    "Sunburst Chart",
-                ]
-                # Add dropdown for chart type selection
-                chart_type = st.selectbox(
-                    "Pilih jenis chart:",
-                    list_of_chart,
-                    key=f"chart_type_{idx}"
-                )
+                cols = st.columns(2)
 
+                with cols[0]:
+                # Input for limiting data points
+                    data_limit = st.number_input(
+                        "Tampilkan jumlah data maksimal:",
+                        min_value=1,
+                        max_value=len(category_count),
+                        value=len(category_count),
+                        step=1,
+                        key=f"data_limit_{idx}"
+                    )
+                    category_count = category_count.head(data_limit)
+                
+                with cols[1]:
+                    list_of_chart = [
+                        "Pie Chart",
+                        "Horizontal Bar Chart",
+                        "Vertical Bar Chart",
+                        "Scatter Plot",
+                        "Line Chart",
+                        "Area Chart",
+                        "Funnel Chart",
+                        "Treemap",
+                        "Radar Chart",
+                        "Sunburst Chart",
+                    ]
+                    # Add dropdown for chart type selection
+                    chart_type = st.selectbox(
+                        "Pilih jenis chart:",
+                        list_of_chart,
+                        key=f"chart_type_{idx}"
+                    )
+    
                 # Let the user define a custom order using streamlit_sortables
                 st.write("Urutkan data:")
                 default_order = list(category_count[item])

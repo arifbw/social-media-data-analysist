@@ -10,3 +10,4 @@ streamlit-tags
 barfi
 python-pptx
 kaleido
+streamlit_sortables

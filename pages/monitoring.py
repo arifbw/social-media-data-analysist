@@ -2,8 +2,7 @@ import streamlit as st
 from PIL import Image
 import page_service as ps
 from pymongo import MongoClient, ASCENDING, DESCENDING
-# from datetime import datetime, timedelta
-import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
@@ -20,6 +19,12 @@ import tempfile
 import requests
 import base64
 import io
+
+from streamlit_sortables import sort_items
+from streamlit_condition_tree import condition_tree, config_from_dataframe
+
+import random
+
 
 from pptx.dml.color import RGBColor
 
@@ -97,6 +102,50 @@ st.markdown("""
             padding-right: 40px;
             padding-top: 20px;
             padding-bottom: 40px;
+        }
+
+        [class*="st-key-chart_card_"] div[data-baseweb='tab-list']{
+            gap: 0px;
+            justify-content: center;
+            zoom: 0.8;
+        }
+            
+        [class*="st-key-chart_card_"] button[data-baseweb='tab']{
+            padding: 0px 50px;
+            border: 2px solid gray;
+            border-radius: 10px;
+        }
+            
+        [class*="st-key-chart_card_"] button[data-baseweb='tab']:hover{
+            border: 2px solid red;    
+        }
+
+        [class*="st-key-chart_card_"] button[aria-selected='true']{
+            border: 2px solid red;
+            background: #ffeded;
+        } 
+        
+        [class*="st-key-chart_card_"] button[aria-selected='true'] *{
+            font-weight: 900;
+        }
+
+        [class*="st-key-chart_card_"] button[data-baseweb='tab']:nth-child(1){
+            border-top-right-radius: 0px;
+            border-bottom-right-radius: 0px;
+            # border-right: unset;
+        }
+            
+        [class*="st-key-chart_card_"] button[data-baseweb='tab']:nth-child(2){
+            border-radius: unset;
+        }
+            
+        [class*="st-key-chart_card_"] button[data-baseweb='tab']:nth-child(3){
+            border-top-left-radius: 0px;
+            border-bottom-left-radius: 0px;
+        }
+            
+        [class*="st-key-chart_card_"] div[data-baseweb='tab-highlight'], [class*="st-key-chart_card_"] div[data-baseweb='tab-border']{
+            display: none;    
         }
     </style>
 """, unsafe_allow_html=True)
@@ -219,9 +268,14 @@ def get_coordinates(province_name):
     else:
         return None, None
     
-kd = ["Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
+original_kd = ["Jabatan", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
       "Tunjangan", "Jenis Kelamin", "Cara Kerja", "Lokasi", "Lokasi Kota", 
-      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Jabatan"]
+      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji"]
+
+if "kd" not in st.session_state:
+    st.session_state["kd"] = original_kd
+    
+kd = st.session_state["kd"]
 
 # Function to save figure and add to PowerPoint
 def save_chart_to_slide(presentation, fig, title, df=None):
@@ -277,6 +331,33 @@ def ganti_text_di_ppt(slide, tag, data):
 presentation = Presentation("template.pptx")
 opening_slide = presentation.slides[0]
 
+
+# Helper function to set the slider range based on the selectbox value
+def get_slider_range(option):
+    today = datetime.now()
+    if option == "Hari ini":
+        return [today.replace(hour=0, minute=0, second=0, microsecond=0), 
+                today.replace(hour=23, minute=59, second=59, microsecond=0)]
+    elif option == "Kemarin":
+        yesterday = today - timedelta(days=1)
+        return [yesterday.replace(hour=0, minute=0, second=0, microsecond=0), 
+                yesterday.replace(hour=23, minute=59, second=59, microsecond=0)]
+    elif option == "7 Hari Terakhir":
+        last_7_days_start = today - timedelta(days=7)
+        return [last_7_days_start.replace(hour=0, minute=0, second=0, microsecond=0), 
+                today.replace(hour=23, minute=59, second=59, microsecond=0)]
+    elif option == "1 Bulan Terakhir":
+        last_month_start = today - timedelta(days=30)
+        return [last_month_start.replace(hour=0, minute=0, second=0, microsecond=0), 
+                today.replace(hour=23, minute=59, second=59, microsecond=0)]
+    elif option == "3 Bulan Terakhir":
+        last_3_months_start = today - timedelta(days=90)
+        return [last_3_months_start.replace(hour=0, minute=0, second=0, microsecond=0), 
+                today.replace(hour=23, minute=59, second=59, microsecond=0)]
+    elif option == "Rentang Waktu":
+        # Default range for custom range
+        return [datetime(2024, 7, 1), datetime(2024, 11, 1)]
+    return None
 
 @st.cache_data()
 def get_all_column():
@@ -345,6 +426,39 @@ def get_category_counts(category_field,alur_waktu):
             {"$group": {"_id": "$Jenis Kelamin", "Count": {"$sum": 1}}},
             {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
         ]
+    elif category_field == "Rentang Gaji":
+        match_stage["$match"]["Digit Gaji (Clean)"] = {"$ne": None}
+        pipeline = [
+            match_stage,
+            {
+                "$bucket": {
+                    "groupBy": "$Digit Gaji (Clean)",  # Field to group by
+                    "boundaries": [0, 3000000, 6000000, 10000000],  # Ranges
+                    "default": "lebih dari 10jt",  # Label for outliers
+                    "output": {
+                        "Count": {"$sum": 1}  # Count documents in each bucket
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "Rentang Gaji": {
+                        "$switch": {  # Custom range labels
+                            "branches": [
+                                {"case": {"$eq": ["$_id", 0]}, "then": "kurang dari 3jt"},
+                                {"case": {"$eq": ["$_id", 3000000]}, "then": "3jt - 5,9jt"},
+                                {"case": {"$eq": ["$_id", 6000000]}, "then": "6jt - 9,9jt"}
+                            ],
+                            "default": "lebih dari 10jt"
+                        }
+                    },
+                    "Count": 1,
+                    "_id": 0
+                }
+            }
+            
+        ]
+
     else:
         # Default pipeline for other categories
         pipeline = [
@@ -424,6 +538,237 @@ def save_excel():
     except:
         st.info("Mohon menunggu sampai data dashboard dan data scraping selesai ter-muat.", icon=":material/info:")
 
+
+@st.dialog("Konfigurasi Dashboard :", width="large")
+def show_konfig_dashboard():
+    # st.write("##### Urutan Data : ")
+    # st.rerun()
+
+    config = {
+        'fields': {
+            'sumber_data': {
+                'label': 'Sumber Data',
+                'type': 'select',
+                'fieldSettings': {
+                    'listValues': [
+                        { 'value': 'Instagram', 'title': 'Instagram' },
+                        { 'value': 'Twitter', 'title': 'Twitter' },
+                        { 'value': 'LinkedIn', 'title': 'LinkedIn' },
+                        { 'value': 'Facebook', 'title': 'Facebook' },
+                        { 'value': 'Tiktok', 'title': 'Tiktok' },
+                        { 'value': 'Youtube', 'title': 'Youtube' }
+                    ],
+                },
+            },
+            'Jenis_Akun': {
+                'label': 'Jenis Akun',
+                'type': 'number',
+                'fieldSettings': {
+                    'min': 0
+                },
+            },
+            'Tipe_Pekerjaan': {
+                'label': 'Tipe Pekerjaan',
+                'type': 'boolean',
+            },
+            'Tingkat_Pendidikan': {
+                'label': 'Tingkat Pendidikan',
+                'type': 'text',
+            },
+            'Pengalaman_Kerja': {
+                'label': 'Pengalaman Kerja',
+                'type': 'text',
+            },
+            'Tunjangan': {
+                'label': 'Tunjangan',
+                'type': 'text',
+            },
+            'Jenis_Kelamin': {
+                'label': 'Jenis Kelamin',
+                'type': 'select',
+                'valueSources': ['value'],
+                'fieldSettings': {
+                    'listValues': [
+                        { 'value': 'male', 'title': 'Laki-laki' },
+                        { 'value': 'female', 'title': 'Perempuan' },
+                        { 'value': 'both', 'title': 'Laki-laki & Perempuan' },
+                    ],
+                },
+            },
+        }
+    }
+
+    with st.container(border=True):
+        # col = st.columns([3,1.2])
+        # with col[0]:
+        # with  col[1]:
+
+        st.write("#### Urutan Data Chart :")
+        revised_kd = sort_items(kd, direction="horizontal")
+
+        st.write("#### Filter Data Chart :")
+        condition_tree(
+            config,
+            always_show_buttons=True,
+            return_type='sql',
+            placeholder="Tambahkan Rule Baru"
+        )
+
+    cols = st.columns(3)
+
+    with cols[2]:
+        if st.button("Simpan", use_container_width=True, type="primary", icon=":material/save:"):
+            st.session_state["kd"] = revised_kd
+            st.rerun()
+
+def format_datetime_to_string(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+def draw_chart(idx, item, aw):
+    with st.container(border=True, key=f"chart_card_{idx}"):
+        with st.spinner('Preparing data...'):
+            st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
+
+            
+            tab_chart = st.tabs(["Chart", "Data", "Settings"])
+            
+            with tab_chart[2]:
+                # Fetch and prepare data
+                category_count = get_category_counts(item, aw)
+                # category_count.columns = [item, 'Count']
+                category_count.columns = [item, 'Count'] if item != "Rentang Gaji" else ['Count', item]
+
+                # Input for limiting data points
+                data_limit = st.number_input(
+                    "Tampilkan jumlah data maksimal:",
+                    min_value=1,
+                    max_value=len(category_count),
+                    value=len(category_count),
+                    step=1,
+                    key=f"data_limit_{idx}"
+                )
+                category_count = category_count.head(data_limit)
+                
+                list_of_chart = [
+                    "Pie Chart",
+                    "Horizontal Bar Chart",
+                    "Vertical Bar Chart",
+                    "Scatter Plot",
+                    "Line Chart",
+                    "Area Chart",
+                    "Funnel Chart",
+                    "Treemap",
+                    "Radar Chart",
+                    "Sunburst Chart",
+                ]
+                # Add dropdown for chart type selection
+                chart_type = st.selectbox(
+                    "Pilih jenis chart:",
+                    list_of_chart,
+                    key=f"chart_type_{idx}"
+                )
+
+                # Let the user define a custom order using streamlit_sortables
+                st.write("Urutkan data:")
+                default_order = list(category_count[item])
+                custom_order = sort_items(default_order)
+                
+                # Reorder the data based on the user's custom sort
+                category_count = category_count.set_index(item).loc[custom_order].reset_index()
+
+            # chart_type = random.choice(list_of_chart)
+            chart_type = list_of_chart[idx % 10]
+            # Tabs for chart and data
+
+            with tab_chart[0]:  # Chart tab
+                if chart_type == "Pie Chart":
+                    fig = px.pie(
+                        category_count,
+                        names=item,
+                        values='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Horizontal Bar Chart":
+                    fig = px.bar(
+                        category_count,
+                        x='Count',
+                        y=item,
+                        orientation='h',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Vertical Bar Chart":
+                    fig = px.bar(
+                        category_count,
+                        y='Count',
+                        x=item,
+                        orientation='v',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Scatter Plot":
+                    fig = px.scatter(
+                        category_count,
+                        x=item,
+                        y='Count',
+                        color=item,
+                        size='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Line Chart":
+                    fig = px.line(
+                        category_count,
+                        x=item,
+                        y='Count',
+                        markers=True,
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Area Chart":
+                    fig = px.area(
+                        category_count,
+                        x=item,
+                        y='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Funnel Chart":
+                    fig = px.funnel(
+                        category_count,
+                        y=item,
+                        x='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Treemap":
+                    fig = px.treemap(
+                        category_count,
+                        path=[item],
+                        values='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Radar Chart":
+                    df_radar = category_count.pivot_table(index=item, values='Count').reset_index()
+                    fig = px.line_polar(
+                        df_radar,
+                        r='Count',
+                        theta=item,
+                        line_close=True
+                    )
+                elif chart_type == "Sunburst Chart":
+                    fig = px.sunburst(
+                        category_count,
+                        path=[item],
+                        values='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                st.plotly_chart(fig)
+                save_chart_to_slide(presentation, fig, f'Distribusi Data {item}', category_count)
+
+            with tab_chart[1]:  # Data tab
+                st.dataframe(category_count, hide_index=True, use_container_width=True)
+
+    # Add spacing after the chart
+    st.text("")
+    st.text("")
+
+total_docs = collection.count_documents({})
+
 filter_option = {
     "list_kolom": None,
     "tanggal": None,
@@ -431,7 +776,7 @@ filter_option = {
     "sumber": None
 }
 with st.container(border=True):
-    col = st.columns([4.5,1], vertical_alignment="center")
+    col = st.columns([3.5,1,1], vertical_alignment="center")
 
     with col[0]:
         st.write("## Analisa Data 🕵️‍♂️🚀")
@@ -439,19 +784,32 @@ with st.container(border=True):
     with col[1]:
         popover = st.popover("Export Data", icon=":material/download:", use_container_width=True)
 
-        if popover.button("Dashboard (PPT)", icon=":material/animated_images:"):
+        if popover.button("Dashboard (PPT)", icon=":material/animated_images:", use_container_width=True):
             save_ppt()
 
-        if popover.button("Scraping (XLSX)", icon=":material/table:"):
+        if popover.button("Scraping (XLSX)", icon=":material/table:", use_container_width=True):
             save_excel()
+    with col[2]:
+        if st.button("Konfigurasi", type="primary", icon=":material/settings:", use_container_width=True):
+            show_konfig_dashboard()
 
     main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
     with main_tabs[0]:
         with st.container(border=True):
-            st.write("##### 📆 Timeline Data : ")
-            alur_waktu = st.slider("", label_visibility="collapsed", value=[datetime.datetime(2024, 7, 1, 0, 0), datetime.datetime(2024, 11, 1, 0, 0)], min_value=datetime.datetime(2024, 7, 1), max_value=datetime.datetime(2024, 12, 31, 1, 1), format="MM/DD/YY")
-        
+            col = st.columns([5,1], vertical_alignment="top")
+            
+            with col[0]:
+                st.write("##### 📆 Timeline Data : ")
+            with col[1]:
+                alur_waktu_fixed = st.selectbox("Sort By :", options=["Rentang Waktu", "Hari ini", "Kemarin", "7 Hari Terakhir", "1 Bulan Terakhir", "3 Bulan Terakhir"], label_visibility="collapsed")
+
+            slider_range = get_slider_range(alur_waktu_fixed)
+            slider_disabled = alur_waktu_fixed != "Rentang Waktu"
+
+            alur_waktu = st.slider("", label_visibility="collapsed", value=slider_range, min_value=datetime(2024, 7, 1), max_value=datetime(2024, 12, 31, 1, 1), disabled=slider_disabled, format="MM/DD/YY")
+
+            
         aw = [
             date if isinstance(date, str) else date.strftime("%Y-%m-%d")
             for date in alur_waktu
@@ -460,6 +818,60 @@ with st.container(border=True):
         tgl_ppt = " s/d ".join(str(x) for x in aw)
         ganti_text_di_ppt(opening_slide, "tanggal_data", f"({ tgl_ppt })")
         
+        col = st.columns(3, vertical_alignment="center")
+
+        with col[0]:
+            with st.container(border=True):
+                start_date, end_date = aw[0], aw[1]
+                
+                data_count_in_range = collection.count_documents({
+                    "Tanggal Publikasi": {
+                        "$gte": start_date,
+                        "$lt": end_date
+                    }
+                })
+
+                # Query total data up to the start and end dates for comparison
+                total_data_up_to_start = collection.count_documents({
+                    "Tanggal Publikasi": {"$lt": start_date}
+                })
+
+                total_data_up_to_end = collection.count_documents({
+                    "Tanggal Publikasi": {"$lt": end_date}
+                })
+
+                # Calculate differences
+                difference = total_data_up_to_end - total_data_up_to_start
+
+                if total_data_up_to_start > 0:
+                    percentage_difference = round((difference / total_data_up_to_start) * 100)
+                else:
+                    percentage_difference = 0  # Avoid division by zero
+
+                st.metric("Total Data Scraping", f"{data_count_in_range:,}".replace(",", "."), delta=f"{percentage_difference}%")
+        with col[1]:
+            with st.container(border=True):
+                total_lowongan = collection.count_documents({
+                    "$and": [
+                        {"Persentase Lowongan": {"$gt": 20}},
+                        {"Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}
+                    ]
+                })
+                st.metric("Total Job Posting", f"{total_lowongan:,}".replace(",", "."), delta="0 %")
+        with col[2]:
+            with st.container(border=True):
+                pipeline = [
+                    {"$match": {"Persentase Lowongan": {"$gt": 20}, "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}},
+                    {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kouta (Clean)"}}}
+                ]
+
+                # Menjalankan pipeline
+                result = list(collection.aggregate(pipeline))
+                total_quota = result[0]["totalQuota"]
+
+
+                st.metric("Total Kouta Kerjaan", f"{round(total_quota):,}".replace(",", "."), delta="0%")
+
         with st.container(border=True):
             col = st.columns([5,1.2], vertical_alignment="center")
             
@@ -524,8 +936,8 @@ with st.container(border=True):
                     tooltip=tooltip
                 ))
         top_chart = st.columns(3, gap="small")
+        
         # Top 10 Accounts with Most Followers
-
         with top_chart[0]:
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
@@ -534,6 +946,7 @@ with st.container(border=True):
                     st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
                     add_table_from_df_to_slide(presentation=presentation, slide=None, df=follower_by_account, title="Top 10 Akun Loker Follower Terbanyak")
 
+        # Total Posts by Sumber Media Sosial
         with top_chart[1]:
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
@@ -564,50 +977,26 @@ with st.container(border=True):
                     fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color_discrete_sequence=color_sequence)
                     st.plotly_chart(fig_sentimen)
                     save_chart_to_slide(presentation, fig_sentimen, "Total Postingan Berdasarkan Klasifikasi Akun", sentimen_count)
+        
+        st.text("")
+        st.text("")
+
+        kolom_loop = st.columns(2, gap="medium")
         # Loop through categories and generate charts
         for idx, item in enumerate(kd):
-            with st.container(border=True):
-                with st.spinner('Preparing data.'):
-                    st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
-
-                    # Get category count data
-                    category_count = get_category_counts(item,aw)
-                    category_count.columns = [item, 'Count']
-
-                    col1, col2 = st.columns(2, gap="small")
-
-                    if idx % 3 == 0:
-                        with col1:
-                            st.dataframe(category_count, hide_index=True)
-                        with col2:
-                            fig_pie_category = px.pie(category_count, names=item, values='Count', color_discrete_sequence=color_sequence)
-                            st.plotly_chart(fig_pie_category)
-                            
-                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
-                            save_chart_to_slide(presentation, fig_pie_category, f'Distribusi Data {item}', data_tbl_ppt)
-                    elif idx % 3 == 1:
-                        with col1:
-                            fig_bar_category = px.bar(category_count, x='Count', y=item, orientation='h', color_discrete_sequence=color_sequence)
-                            st.plotly_chart(fig_bar_category)
-                            
-                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
-                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}', data_tbl_ppt)
-                        with col2:
-                            st.dataframe(category_count, hide_index=True)
-                    else:
-                        with col2:
-                            fig_bar_category = px.bar(category_count, y='Count', x=item, orientation='v', color_discrete_sequence=color_sequence)
-                            st.plotly_chart(fig_bar_category)
-                            
-                            data_tbl_ppt = category_count.sort_values(by='Count', ascending=False).head(10)
-                            save_chart_to_slide(presentation, fig_bar_category, f'Distribusi Data {item}', data_tbl_ppt)
-                        with col1:
-                            st.dataframe(category_count, hide_index=True)
+            if idx % 2 == 0:
+                with kolom_loop[0]:
+                    draw_chart(idx,item,aw)
+            else:
+                with kolom_loop[1]:
+                    draw_chart(idx,item,aw)
+        
         
         if "presentation" not in st.session_state:
             st.session_state["presentation"] = None
 
         st.session_state["presentation"] = presentation
+        
         # with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as ppt_file:
             # presentation.save(ppt_file.name)
             # st.download_button("Download PowerPoint", ppt_file.name, file_name="dashboard_presentation.pptx")
@@ -634,7 +1023,7 @@ with st.container(border=True):
                 
                 sort_dir = st.radio("Direction", options=["🔼", "🔽"], horizontal=True)
 
-                filter_option["tanggal"] = st.date_input('Rentang Waktu :', [datetime.datetime(2024, 7, 1), datetime.datetime.now()])
+                filter_option["tanggal"] = st.date_input('Rentang Waktu :', [datetime(2024, 7, 1), datetime.now()])
 
                 # st.write("Jenis Akun :")
                 
@@ -669,7 +1058,6 @@ with st.container(border=True):
 
                         with down_menu[0]:
                             page_size = st.selectbox("Rows per page", options=[50, 100, 150, 200, 250])
-                            total_docs = collection.count_documents({})
                             total_pages = round(total_docs / page_size)
 
                         with down_menu[1]:

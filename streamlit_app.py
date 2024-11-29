@@ -8,7 +8,6 @@ from openpyxl import load_workbook
 # from stqdm import stqdm
 from io import BytesIO
 from datetime import datetime
-from streamlit_condition_tree import condition_tree, config_from_dataframe
 import time
 import pymongo
 from pymongo import UpdateOne

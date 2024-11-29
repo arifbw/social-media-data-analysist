@@ -681,7 +681,7 @@ def draw_chart(idx, item, aw):
                 category_count = category_count.set_index(item).loc[custom_order].reset_index()
 
             # chart_type = random.choice(list_of_chart)
-            chart_type = list_of_chart[idx % 10]
+            chart_type = list_of_chart[idx % len(list_of_chart)] if idx > 0 and chart_type=="Pie Chart" else chart_type
             # Tabs for chart and data
 
             with tab_chart[0]:  # Chart tab

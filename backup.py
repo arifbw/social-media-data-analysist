@@ -158,3 +158,76 @@ def draw_chart_old2(idx, item, aw):
     # Add spacing after the chart
     st.text("")
     st.text("")
+
+
+
+with st.container(border=True):
+            col = st.columns([5,1], vertical_alignment="top")
+            
+            with col[0]:
+                st.write("##### 📆 Timeline Data : ")
+            
+            with col[1]:
+                alur_waktu_fixed = st.selectbox("Sort By :", options=["Rentang Waktu", "Hari ini", "Kemarin", "7 Hari Terakhir", "1 Bulan Terakhir", "3 Bulan Terakhir"], label_visibility="collapsed")
+
+            slider_range = get_slider_range(alur_waktu_fixed)
+            slider_disabled = alur_waktu_fixed != "Rentang Waktu"
+
+            alur_waktu = st.slider("", label_visibility="collapsed", value=slider_range, min_value=datetime(2024, 7, 1), max_value=datetime(2024, 12, 31, 1, 1), disabled=slider_disabled, format="MM/DD/YY")
+
+
+
+config = {
+    'fields': {
+        'sumber_data': {
+            'label': 'Sumber Data',
+            'type': 'select',
+            'fieldSettings': {
+                'listValues': [
+                    { 'value': 'Instagram', 'title': 'Instagram' },
+                    { 'value': 'Twitter', 'title': 'Twitter' },
+                    { 'value': 'LinkedIn', 'title': 'LinkedIn' },
+                    { 'value': 'Facebook', 'title': 'Facebook' },
+                    { 'value': 'Tiktok', 'title': 'Tiktok' },
+                    { 'value': 'Youtube', 'title': 'Youtube' },
+                    { 'value': 'Telegram', 'title': 'Youtube' }
+                ],
+            },
+        },
+        'Jenis_Akun': {
+            'label': 'Jenis Akun',
+            'type': 'number',
+            'fieldSettings': {
+                'min': 0
+            },
+        },
+        'Tipe_Pekerjaan': {
+            'label': 'Tipe Pekerjaan',
+            'type': 'boolean',
+        },
+        'Tingkat_Pendidikan': {
+            'label': 'Tingkat Pendidikan',
+            'type': 'text',
+        },
+        'Pengalaman_Kerja': {
+            'label': 'Pengalaman Kerja',
+            'type': 'text',
+        },
+        'Tunjangan': {
+            'label': 'Tunjangan',
+            'type': 'text',
+        },
+        'Jenis_Kelamin': {
+            'label': 'Jenis Kelamin',
+            'type': 'select',
+            'valueSources': ['value'],
+            'fieldSettings': {
+                'listValues': [
+                    { 'value': 'male', 'title': 'Laki-laki' },
+                    { 'value': 'female', 'title': 'Perempuan' },
+                    { 'value': 'both', 'title': 'Laki-laki & Perempuan' },
+                ],
+            },
+        },
+    }
+}

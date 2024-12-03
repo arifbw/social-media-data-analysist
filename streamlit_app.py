@@ -240,8 +240,8 @@ def process_chunk(chunk, kd, progress_bar):
 
             chunk.at[index, "Persentase Lowongan"] = kalkulasi_persentase_lowongan(data_params_kalkulasi_persentase_lowongan)
 
-
-        progress_bar.progress(index/len(chunk), f"Menganalisa data baris ke-{index} dari {len(chunk)} data.")
+        progress_value = min(max(index/len(chunk), 0.0), 1.0)
+        progress_bar.progress(progress_value, f"Menganalisa data baris ke-{index} dari {len(chunk)} data.")
 
     progress_bar.progress(0, "Progress Indentifikasi & Klasifikasi Text ...")
 
@@ -430,6 +430,62 @@ def execute_query_builder(db_source, fields, sort_fields, sort_order_value):
         result = {"msg": "Error."}
 
     return result
+
+
+def parse_json_telegram(json_data, keywords):
+    messages = json_data.get("messages", [])
+    follower = json_data.get("follower")
+    rows = []
+
+    for msg in messages:
+        content = "".join(
+            [t.get("text", "") if isinstance(t, dict) else t for t in msg.get("text", [])]
+        )
+
+         # Filter messages based on keywords
+        if not any(keyword.lower() in content.lower() for keyword in keywords):
+            continue  # Skip messages that don't contain the keywords
+
+        # Extract required fields
+        date = msg.get("date", None)
+        time_part = date.split("T")[1] if date else None
+
+        account_name_1 = msg.get("from")
+        account_name_2 = msg.get("from_id")
+        
+        account_name = account_name_1 if account_name_1 else account_name_2
+
+        urls = [entity.get("text") for entity in msg.get("text_entities", []) if entity.get("type") == "link"]
+        url = urls[0] if urls else None
+
+        # Static values
+        topik = "Lowongan"
+        sumber = "Telegram"
+
+        # Placeholder values for Likes, View, Engagement (not in the provided JSON)
+        likes = None
+        view = None
+        engagement = None
+
+        # Append row
+        rows.append({
+            "Tanggal Publikasi": date.split("T")[0] if date else None,
+            "Jam Publikasi": time_part if time_part else None,
+            "Tanggal Tersimpan": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Topik": topik,
+            "Akun/Judul": account_name,
+            "Konten": content,
+            "Sumber": sumber,
+            "Url": url,
+            "Likes": likes,
+            "View": view,
+            "Engagement": engagement,
+            "Jenis Akun": "Non Pers",
+            "Followers": follower
+        })
+
+    # Create DataFrame
+    return pd.DataFrame(rows)
 
 # Modal & Dialog
 @st.dialog("Download disini :")
@@ -648,11 +704,11 @@ else:
             if mode_klasifikasi=="Proses Baru":
                 # st.write('Tentukan Sumber Text yang ingin di klasifikasi :')
 
-                data_source = st.radio("Tipe Source :", ["Data Lokal", "Data Server", "Masukan Manual"], horizontal=True)
+                data_source = st.radio("Tipe Source :", ["Data Lokal", "Data Server", "Masukan Manual", "Export Telegram"], horizontal=True)
                 
                 match data_source:
                     case "Data Lokal":
-                        uploaded_files = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"], accept_multiple_files=True)
+                        uploaded_files = st.file_uploader("Upload Excel files", type=["xlsx", "xls"], accept_multiple_files=True)
                     case "Data Server":
                         col = st.columns([3.1,1], vertical_alignment="bottom")
                         
@@ -677,6 +733,29 @@ else:
                             )
                     case "Masukan Manual":
                         data_text_manual = st.text_area(f"Masukan Text : ", placeholder=f"Masukan Text disini ... ")
+                    case "Export Telegram":
+                        keyword_filter_tele = st_tags(
+                        label="Filter Data Chat Mengandung Kata :",
+                        text='Press enter to add more',
+                        value=["lowongan", "recruitment", "loker", "hiring", "rekrutmen"],
+                        maxtags = 200,
+                        key='filter_tele')
+                        uploaded_files = st.file_uploader("Upload JSON Exported Files from Telegram :", type=["json"], accept_multiple_files=True)
+
+                        col = st.columns(3)
+
+                        with col[2]:
+                            preview = st.button("Preview Data", use_container_width=True, type="primary", icon=":material/search:")
+                        
+                        if preview:
+                            for uploaded_file in uploaded_files:
+                                st.write(f"#### Preview Data : {uploaded_file.name}")
+                                json_data = json.load(uploaded_file)
+                                df = parse_json_telegram(json_data, keyword_filter_tele)
+
+                                # Display the DataFrame
+                                st.write(df)
+
                     case default:
                         st.error("Not Implemented", icon=":material/info:")
 
@@ -979,7 +1058,7 @@ else:
             # Proses By Data Source Type
             if mode_klasifikasi=="Proses Baru":
                 match data_source:
-                    case "Data Lokal":
+                    case "Data Lokal" | "Export Telegram":
                         for uploaded_file in uploaded_files:
                             if(uploaded_file):
                                 processed_chunks = []
@@ -987,19 +1066,31 @@ else:
 
                                 progress_bar.progress(30, "Membaca Kamus Data ...")
                                 kd = get_kamus_data()
+
+                                if data_source=="Data Lokal":
+                                    total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
+                                else:
+                                    # data_json = pd.read_json(uploaded_file, orient="records")
+                                    json_data = json.load(uploaded_file)
+                                    df_json = parse_json_telegram(json_data, keyword_filter_tele) 
+                                    total_rows = df_json.shape[0]
+
                                 progress_bar.progress(50, "Membaca Excel File ...")
-                                total_rows = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name="Media Sosial").shape[0]
                                 progress_bar.progress(70, "Menghitung Chunk File ...")
                                 num_chunks = (total_rows // chunksize) + (total_rows % chunksize > 0)
 
                                 for i in range(num_chunks):
-                                    chunk = pd.read_excel(
-                                        uploaded_file,
-                                        sheet_name="Media Sosial",
-                                        engine='openpyxl',
-                                        skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
-                                        nrows=chunksize,  # Read only 'chunksize' rows at a time
-                                    )
+                                    if data_source=="Data Lokal":
+                                        chunk = pd.read_excel(
+                                            uploaded_file,
+                                            sheet_name="Media Sosial",
+                                            engine='openpyxl',
+                                            skiprows=range(1, i * chunksize + 1),  # Skip rows that have already been processed
+                                            nrows=chunksize,  # Read only 'chunksize' rows at a time
+                                        )
+                                    else:
+                                        chunk = df_json.iloc[i * chunksize: (i + 1) * chunksize]
+
                                     progress_bar.progress((i + 1) / num_chunks, f"Memproses {i + 1}/{num_chunks} chunk data")
                                     processed_chunk = process_chunk(chunk, kd, sub_progress_bar)
 
@@ -1098,6 +1189,19 @@ else:
 
                         if data_target=="**Tampilkan Hasil**":
                             preview_result(kd, result, tipe="json")
+                    case "Export Telegram":
+                        for uploaded_file in uploaded_files:
+                            if(uploaded_file):
+                                st.toast(f"Memulai proses ... {uploaded_file.name}")
+
+                                progress_bar.progress(30, "Membaca Kamus Data ...")
+                                kd = get_kamus_data()
+
+                                
+                                json_data = json.load(uploaded_file)
+                                df = parse_json_telegram(json_data, keyword_filter_tele)
+                            else:
+                                st.toast("Mohon upload file json yang ingin diproses.")
 
                     case default:
                         st.toast("This data source not implmented yet.", icon="ℹ️")

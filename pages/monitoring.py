@@ -23,6 +23,8 @@ import io
 from streamlit_sortables import sort_items
 from streamlit_condition_tree import condition_tree, config_from_dataframe
 
+from streamlit_date_picker import date_range_picker, date_picker, PickerType
+
 import random
 
 
@@ -102,6 +104,13 @@ st.markdown("""
             padding-right: 40px;
             padding-top: 20px;
             padding-bottom: 40px;
+        }
+            
+        [class*="st-key-card_dashoard_"]{
+            padding: 15px 20px;
+            border-radius: 5px;
+            border: 2px solid #33CCCC;
+            box-shadow: 3px 3px 1px 2px #33CCCC;
         }
 
         [class*="st-key-chart_card_"] div[data-baseweb='tab-list']{
@@ -356,7 +365,7 @@ def get_slider_range(option):
                 today.replace(hour=23, minute=59, second=59, microsecond=0)]
     elif option == "Rentang Waktu":
         # Default range for custom range
-        return [datetime(2024, 7, 1), datetime.now()]
+        return [datetime(2024, 7, 1), datetime(2024, 11, 29)]
     return None
 
 @st.cache_data()
@@ -403,6 +412,17 @@ def get_category_counts(category_field,alur_waktu):
     # If the category is "Jenis Kelamin", handle it specifically
     match_stage = {"$match": {}}
     match_stage["$match"]["Tanggal Publikasi"] = {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+    
+    if "conditional_tree_query" in st.session_state:
+        conditional_tree_query = st.session_state["conditional_tree_query"]
+
+        for key, value in conditional_tree_query.items():
+            if value == "all":
+                # If the value is "all", do not add it to the match stage
+                continue
+            else:
+                # If it's not "all", add the condition to $match
+                match_stage["$match"][key] = value
 
     if category_field == "Jenis Kelamin":
         pipeline = [
@@ -467,6 +487,7 @@ def get_category_counts(category_field,alur_waktu):
             {"$group": {"_id": f"${category_field}", "Count": {"$sum": 1}}},
             {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
         ]
+    # st.write(match_stage)
     
     # Execute the aggregation pipeline and return as DataFrame
     return pd.DataFrame(list(collection.aggregate(pipeline)))
@@ -539,87 +560,89 @@ def save_excel():
         st.info("Mohon menunggu sampai data dashboard dan data scraping selesai ter-muat.", icon=":material/info:")
 
 
+def generate_default_condition_tree(fields):
+    return {
+        "type": "group",
+        "properties": {
+            "conjunction": "AND",
+            "not": False
+        },
+        "children": [
+            {
+                "type": "rule",
+                "properties": {
+                    "fieldSrc": 'field',  # The 'fieldSrc' remains 'field' for dynamically generated rules
+                    "field": field_name,
+                    "operator": 'select_equals',  # Use '==' as the operator
+                    "value": ["all"],  # Default value (first option)
+                    "valueSrc": ['value'],  # Set to "value" to use the value directly
+                    "valueType": ['select']  # Assuming "text" for simplicity
+                }
+            }
+            for field_name, field_config in fields.items()
+            if "fieldSettings" in field_config and "listValues" in field_config["fieldSettings"]
+        ]
+    }
+
 @st.dialog("Konfigurasi Dashboard :", width="large")
 def show_konfig_dashboard():
     # st.write("##### Urutan Data : ")
     # st.rerun()
 
-    config = {
-        'fields': {
-            'sumber_data': {
-                'label': 'Sumber Data',
-                'type': 'select',
-                'fieldSettings': {
-                    'listValues': [
-                        { 'value': 'Instagram', 'title': 'Instagram' },
-                        { 'value': 'Twitter', 'title': 'Twitter' },
-                        { 'value': 'LinkedIn', 'title': 'LinkedIn' },
-                        { 'value': 'Facebook', 'title': 'Facebook' },
-                        { 'value': 'Tiktok', 'title': 'Tiktok' },
-                        { 'value': 'Youtube', 'title': 'Youtube' }
-                    ],
-                },
-            },
-            'Jenis_Akun': {
-                'label': 'Jenis Akun',
-                'type': 'number',
-                'fieldSettings': {
-                    'min': 0
-                },
-            },
-            'Tipe_Pekerjaan': {
-                'label': 'Tipe Pekerjaan',
-                'type': 'boolean',
-            },
-            'Tingkat_Pendidikan': {
-                'label': 'Tingkat Pendidikan',
-                'type': 'text',
-            },
-            'Pengalaman_Kerja': {
-                'label': 'Pengalaman Kerja',
-                'type': 'text',
-            },
-            'Tunjangan': {
-                'label': 'Tunjangan',
-                'type': 'text',
-            },
-            'Jenis_Kelamin': {
-                'label': 'Jenis Kelamin',
-                'type': 'select',
-                'valueSources': ['value'],
-                'fieldSettings': {
-                    'listValues': [
-                        { 'value': 'male', 'title': 'Laki-laki' },
-                        { 'value': 'female', 'title': 'Perempuan' },
-                        { 'value': 'both', 'title': 'Laki-laki & Perempuan' },
-                    ],
-                },
-            },
-        }
+    if "data_config_filter" not in st.session_state:
+        st.write("tunggu hingga loading selesai")
+
+    else:
+        if "data_config_filter_tmp" not in st.session_state:
+            st.write("cek")
+            st.session_state["data_config_filter_tmp"] = st.session_state["data_config_filter"].copy()
+
+        st.json(st.session_state["data_config_filter_tmp"], expanded=False)
+        config = st.session_state["data_config_filter_tmp"]
+        value = generate_default_condition_tree(config["fields"])
+
+        with st.container(border=True):
+            # col = st.columns([3,1.2])
+            # with col[0]:
+            # with  col[1]:
+
+            st.write("#### Urutan Data Chart :")
+            revised_kd = sort_items(kd, direction="horizontal")
+
+            st.write("#### Filter Data Chart :")
+            query_tmp = condition_tree(
+                config,
+                tree=value,
+                always_show_buttons=True,
+                return_type='mongodb',
+                placeholder="Tambahkan Rule Baru",
+                key="tree"
+            )
+
+        cols = st.columns(3)
+
+        with cols[2]:
+            if st.button("Simpan", use_container_width=True, type="primary", icon=":material/save:"):
+                st.session_state["kd"] = revised_kd
+                st.session_state["conditional_tree_query"] = query_tmp
+                st.cache_data.clear()
+                st.rerun()
+
+if "data_config_filter" not in st.session_state:
+    st.session_state["data_config_filter"] = {
+        'fields': {}
     }
 
-    with st.container(border=True):
-        # col = st.columns([3,1.2])
-        # with col[0]:
-        # with  col[1]:
-
-        st.write("#### Urutan Data Chart :")
-        revised_kd = sort_items(kd, direction="horizontal")
-
-        st.write("#### Filter Data Chart :")
-        condition_tree(
-            config,
-            always_show_buttons=True,
-            return_type='sql',
-            placeholder="Tambahkan Rule Baru"
-        )
-
-    cols = st.columns(3)
-
-    with cols[2]:
-        if st.button("Simpan", use_container_width=True, type="primary", icon=":material/save:"):
-            st.session_state["kd"] = revised_kd
-            st.rerun()
+def masukan_ke_data_config_filter(label, df):
+    st.session_state["data_config_filter"]["fields"][label] = {
+        "label": label,
+        "type": "select",
+        "fieldSettings": {
+            "listValues": [
+                {"value": row[label], "title": row[label]} for _, row in df.iterrows()
+            ] + [{"value": "all", "title": "Semua Klasifikasi"}]  # Add additional option
+        }
+    }
 
 def format_datetime_to_string(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -627,14 +650,20 @@ def format_datetime_to_string(dt):
 def draw_chart(idx, item, aw):
     with st.container(border=True, key=f"chart_card_{idx}"):
         with st.spinner('Preparing data...'):
+            category_count = get_category_counts(item, aw)
+
+            if category_count.empty:
+                   st.write(f"##### Data :red[{item}] Tidak Tersedia")
+                   st.write(f"Data {item} tidak tesedia berdasarkan Filter yang dipilih.")
+                   st.image("https://cdn.vectorstock.com/i/500p/04/13/no-data-empty-concept-vector-41830413.jpg", use_container_width=True)
+
+                   return
             st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
 
             
             tab_chart = st.tabs(["Chart", "Data", "Settings"])
             
             with tab_chart[2]:
-                # Fetch and prepare data
-                category_count = get_category_counts(item, aw)
                 # category_count.columns = [item, 'Count']
                 category_count.columns = [item, 'Count'] if item != "Rentang Gaji" else ['Count', item]
 
@@ -767,6 +796,7 @@ def draw_chart(idx, item, aw):
             with tab_chart[1]:  # Data tab
                 st.dataframe(category_count, hide_index=True, use_container_width=True)
 
+    masukan_ke_data_config_filter(item, category_count)
     # Add spacing after the chart
     st.text("")
     st.text("")
@@ -800,20 +830,34 @@ with st.container(border=True):
     main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
     with main_tabs[0]:
-        with st.container(border=True):
-            col = st.columns([5,1], vertical_alignment="top")
+        col = st.columns([3.5,1], vertical_alignment="center")
+
+        default_start_date = datetime(2024, 7, 1)
+        default_end_date = datetime(2024, 12, 31)
+
+        with col[0]:
+            st.write("#### Ringkasan Data")
+        with col[1]:
+            # Use st.date_input for a date range
+            col_child = st.columns([1, 10], vertical_alignment="center", gap="small")
+
+            with col_child[0]:
+                st.write("📆")
+            with col_child[1]:
+                alur_waktu = st.date_input(
+                    "Select Date Range",
+                    value=(default_start_date, default_end_date),
+                    min_value=datetime(2024, 1, 1),
+                    max_value=datetime(2024, 12, 31),
+                    label_visibility="collapsed"
+                )
+
             
-            with col[0]:
-                st.write("##### 📆 Timeline Data : ")
-            with col[1]:
-                alur_waktu_fixed = st.selectbox("Sort By :", options=["Rentang Waktu", "Hari ini", "Kemarin", "7 Hari Terakhir", "1 Bulan Terakhir", "3 Bulan Terakhir"], label_visibility="collapsed")
 
-            slider_range = get_slider_range(alur_waktu_fixed)
-            slider_disabled = alur_waktu_fixed != "Rentang Waktu"
+        # Ensure valid date range
+            if len(alur_waktu) == 2 and alur_waktu[0] > alur_waktu[1]:
+                st.error("Start date cannot be after the end date.")
 
-            alur_waktu = st.slider("", label_visibility="collapsed", value=slider_range, min_value=datetime(2024, 7, 1), max_value=datetime(2024, 12, 31, 1, 1), disabled=slider_disabled, format="MM/DD/YY")
-
-            
         aw = [
             date if isinstance(date, str) else date.strftime("%Y-%m-%d")
             for date in alur_waktu
@@ -822,10 +866,10 @@ with st.container(border=True):
         tgl_ppt = " s/d ".join(str(x) for x in aw)
         ganti_text_di_ppt(opening_slide, "tanggal_data", f"({ tgl_ppt })")
         
-        col = st.columns(3, vertical_alignment="center")
+        col = st.columns(3, vertical_alignment="center", gap="medium")
 
         with col[0]:
-            with st.container(border=True):
+            with st.container(key="card_dashoard_1"):
                 start_date, end_date = aw[0], aw[1]
                 
                 data_count_in_range = collection.count_documents({
@@ -852,18 +896,29 @@ with st.container(border=True):
                 else:
                     percentage_difference = 0  # Avoid division by zero
 
-                st.metric("Total Data Scraping", f"{data_count_in_range:,}".replace(",", "."), delta=f"{percentage_difference}%")
+                col_child = st.columns([2.5,1])
+
+                with col_child[0]:
+                    st.metric("Total Data Scraping", f"{data_count_in_range:,}".replace(",", "."), delta=f"{percentage_difference}%")
+                with col_child[1]:
+                    st.image("https://cdn-icons-gif.flaticon.com/8112/8112604.gif", use_container_width=True)
         with col[1]:
-            with st.container(border=True):
+            with st.container(key="card_dashoard_2"):
                 total_lowongan = collection.count_documents({
                     "$and": [
                         {"Persentase Lowongan": {"$gt": 20}},
                         {"Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}
                     ]
                 })
-                st.metric("Total Job Posting", f"{total_lowongan:,}".replace(",", "."), delta="0 %")
+
+                col_child = st.columns([2.5,1])
+
+                with col_child[0]:
+                    st.metric("Total Job Posting", f"{total_lowongan:,}".replace(",", "."), delta="0 %")
+                with col_child[1]:
+                    st.image("https://cdn-icons-gif.flaticon.com/6172/6172508.gif", use_container_width=True)
         with col[2]:
-            with st.container(border=True):
+            with st.container(key="card_dashoard_3"):
                 pipeline = [
                     {"$match": {"Persentase Lowongan": {"$gt": 20}, "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}},
                     {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kouta (Clean)"}}}
@@ -873,8 +928,12 @@ with st.container(border=True):
                 result = list(collection.aggregate(pipeline))
                 total_quota = result[0]["totalQuota"]
 
-
-                st.metric("Total Kouta Kerjaan", f"{round(total_quota):,}".replace(",", "."), delta="0%")
+                col_child = st.columns([2.5,1])
+                
+                with col_child[0]:
+                    st.metric("Total Kouta Pekerjaan", f"{round(total_quota):,}".replace(",", "."), delta="0%")
+                with col_child[1]:
+                    st.image("https://cdn-icons-gif.flaticon.com/7211/7211849.gif", use_container_width=True)
 
         with st.container(border=True):
             col = st.columns([5,1.2], vertical_alignment="center")
@@ -971,6 +1030,8 @@ with st.container(border=True):
                     st.plotly_chart(fig_source_pie)
                     save_chart_to_slide(presentation, fig_source_pie, "Distribusi Sumber Sosial Media", source_count_df)
 
+                    masukan_ke_data_config_filter("Sumber", source_count_df)
+
         # Total Posts by Account Classification
         with top_chart[2]:
             with st.container(border=True):
@@ -981,6 +1042,8 @@ with st.container(border=True):
                     fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color_discrete_sequence=color_sequence)
                     st.plotly_chart(fig_sentimen)
                     save_chart_to_slide(presentation, fig_sentimen, "Total Postingan Berdasarkan Klasifikasi Akun", sentimen_count)
+
+                    masukan_ke_data_config_filter("Klasifikasi Akun", sentimen_count)
         
         st.text("")
         st.text("")

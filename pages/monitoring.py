@@ -21,9 +21,7 @@ import base64
 import io
 
 from streamlit_sortables import sort_items
-from streamlit_condition_tree import condition_tree, config_from_dataframe
-
-from streamlit_date_picker import date_range_picker, date_picker, PickerType
+from streamlit_condition_tree import condition_tree
 
 import random
 

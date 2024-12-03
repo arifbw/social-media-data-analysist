@@ -539,7 +539,7 @@ if not st.session_state.authentication_status:
     col1, col2 = st.columns([2.5,1], vertical_alignment="center", gap="large")
     with col1:
         image_login = Image.open('login_analis.jpg')
-        st.image(image_login, use_column_width=True)
+        st.image(image_login, use_container_width==True)
     with col2:
         try: 
             authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'Lanjukan', 'Captcha':'Masukan Kode di bawah :'}), captcha=True)

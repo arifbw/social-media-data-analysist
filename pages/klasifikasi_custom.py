@@ -453,7 +453,7 @@ if not st.session_state.authentication_status:
     col1, col2 = st.columns([2.5,1], vertical_alignment="center", gap="large")
     with col1:
         image_login = Image.open('login_analis.jpg')
-        st.image(image_login, use_container_width===True)
+        st.image(image_login, use_container_width=True)
     with col2:
         try: 
             authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'Lanjukan', 'Captcha':'Masukan Kode di bawah :'}), captcha=True)
@@ -470,11 +470,13 @@ else:
                 background: white;
             }
 
-            .stMainBlockContainer{
-                padding-left: 40px;
-                padding-right: 40px;
-                padding-top: 10px;
-                padding-bottom: 40px;
+            @media (min-width: 1024px) {
+                .stMainBlockContainer{
+                    padding-left: 40px;
+                    padding-right: 40px;
+                    padding-top: 20px;
+                    padding-bottom: 40px;
+                }
             }
                 
             .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(1) > div{

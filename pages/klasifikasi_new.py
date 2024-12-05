@@ -786,11 +786,13 @@ else:
                 background: white;
             }
                 
-            .stMainBlockContainer{
-                padding-left: 40px;
-                padding-right: 40px;
-                padding-top: 10px;
-                padding-bottom: 40px;
+            @media (min-width: 1024px) {
+                .stMainBlockContainer{
+                    padding-left: 40px;
+                    padding-right: 40px;
+                    padding-top: 20px;
+                    padding-bottom: 40px;
+                }
             }
                 
             .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(1) > div{

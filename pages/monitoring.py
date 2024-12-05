@@ -97,11 +97,13 @@ if not st.session_state.authentication_status:
 
 st.markdown("""
     <style>
-        .stMainBlockContainer{
-            padding-left: 40px;
-            padding-right: 40px;
-            padding-top: 20px;
-            padding-bottom: 40px;
+        @media (min-width: 1024px) {
+            .stMainBlockContainer{
+                padding-left: 40px;
+                padding-right: 40px;
+                padding-top: 20px;
+                padding-bottom: 40px;
+            }
         }
             
         [class*="st-key-card_dashoard_"]{
@@ -109,6 +111,16 @@ st.markdown("""
             border-radius: 5px;
             border: 2px solid #33CCCC;
             box-shadow: 3px 3px 1px 2px #33CCCC;
+        }
+        
+        @media (max-width: 767px) {
+            [class*="st-key-card_dashoard_"] > div > div:nth-child(2){
+                display: none !important;
+            }
+
+            [class*="st-key-chart_card_"] div[data-baseweb='tab-list']{
+                zoom: 0.5 !important;
+            }
         }
 
         [class*="st-key-chart_card_"] div[data-baseweb='tab-list']{
@@ -366,12 +378,12 @@ def get_slider_range(option):
         return [datetime(2024, 7, 1), datetime(2024, 11, 29)]
     return None
 
-@st.cache_data()
+@st.cache_data(show_spinner=False)
 def get_all_column():
     # result = collection.find_one().keys()
     return None
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_top_accounts(alur_waktu):
     pipeline = [
         {"$match": {
@@ -386,7 +398,7 @@ def get_top_accounts(alur_waktu):
             }
         },
         {"$sort": {"Followers": -1}},
-        {"$limit": 10},
+        {"$limit": 20},
         {
             "$project": {
                 "_id": 1,
@@ -397,7 +409,7 @@ def get_top_accounts(alur_waktu):
     ]
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_total_posts_by_classification(alur_waktu):
     pipeline = [
         {"$match": { "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}}},
@@ -405,7 +417,7 @@ def get_total_posts_by_classification(alur_waktu):
     ]
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_category_counts(category_field,alur_waktu):
     # If the category is "Jenis Kelamin", handle it specifically
     match_stage = {"$match": {}}
@@ -592,7 +604,6 @@ def show_konfig_dashboard():
 
     else:
         if "data_config_filter_tmp" not in st.session_state:
-            st.write("cek")
             st.session_state["data_config_filter_tmp"] = st.session_state["data_config_filter"].copy()
 
         st.json(st.session_state["data_config_filter_tmp"], expanded=False)
@@ -799,6 +810,120 @@ def draw_chart(idx, item, aw):
     st.text("")
     st.text("")
 
+def convert_to_currency(value):
+    """
+    Convert a numeric value to Indonesian currency notation.
+
+    Parameters:
+        value (int or float): The numeric value to convert.
+
+    Returns:
+        str: The converted value with 'rb' or 'jt' as a suffix.
+    """
+    if value < 1000:
+        return str(value)  # Return the value as is if it's less than 1000.
+
+    elif value < 1_000_000:
+        # Convert to 'rb'
+        return f"{value / 1000:.0f} rb"
+
+    else:
+        # Convert to 'jt'
+        return f"{value / 1_000_000:.1f} jt".replace('.', ',')
+
+def generate_leaderboard_html(dataframe):
+    leaderboard_html = """
+        <style>
+            .leaderboard-container {
+                font-family: Arial, sans-serif;
+                width: 100%;
+                height: 500px;
+                overflow-y: auto;
+                padding: 10px 10px;
+            }
+            .leaderboard-item {
+                display: flex;
+                align-items: center;
+                background: white;
+                padding: 10px;
+                margin-bottom: 10px;
+                border-radius: 6px;
+                box-shadow: 0 0px 4px rgba(0, 0, 0, 0.5);
+                transition: transform 0.2s ease-in-out;
+                text-decoration: none;
+            }
+            .leaderboard-item:hover {
+                transform: translateY(-5px);
+            }
+            .rank {
+                font-size: 20px;
+                font-weight: bold;
+                width: 40px;
+                text-align: center;
+                color: #4a5568;
+            }
+            .avatar {
+                width: 50px;
+                height: 50px;
+                border-radius: 100%;
+                margin-right: 15px;
+                border: 2px solid #e2e8f0;
+            }
+            .info {
+                flex: 1;
+            }
+            .name {
+                font-size: 18px;
+                font-weight: bold;
+                margin: 0;
+                color: black;
+
+                overflow: hidden;
+                display: -webkit-box;
+                -webkit-line-clamp: 2; /* number of lines to show */
+                        line-clamp: 2; 
+                -webkit-box-orient: vertical;
+            }
+            .followers {
+                color: #4a5568;
+                margin: 5px 0 0;
+                
+                padding: 2px 8px;
+                background: #FF7F0E;
+                color: white;
+                border-radius: 4px;
+                font-size: 12px;
+                display: inline-block;
+            }
+            .platform {
+                display: inline-block;
+                margin-top: 5px;
+                padding: 2px 8px;
+                background: #1F77B4;
+                color: white;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+        </style>
+        <div class="leaderboard-container">
+    """
+    
+    for i, row in dataframe.iterrows():
+        leaderboard_html += f"""
+        <div class="leaderboard-item">
+            <div class="rank">#{i + 1}</div>
+            <img src="https://cdn0.iconfinder.com/data/icons/social-messaging-ui-color-shapes/128/user-male-circle-blue-512.png" alt="Profile Picture" class="avatar">
+            <div class="info">
+                <div class="name">{row['_id']}</div>
+                <span class="followers">{convert_to_currency(row['Followers'])} Followers</span>
+                <span class="platform">{row['Sumber']}</span>
+            </div>
+        </div>
+        """
+    leaderboard_html += "</div>"
+
+    return leaderboard_html
+
 total_docs = collection.count_documents({})
 
 filter_option = {
@@ -1002,10 +1127,13 @@ with st.container(border=True):
         with top_chart[0]:
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
-                    st.write("##### Top 10 :red[Akun Loker Follower] Terbanyak")
+                    st.write("##### Top 20 :red[Akun Loker Follower] Terbanyak")
                     follower_by_account = get_top_accounts(aw)
-                    st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
-                    add_table_from_df_to_slide(presentation=presentation, slide=None, df=follower_by_account, title="Top 10 Akun Loker Follower Terbanyak")
+                    # st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
+
+                    st.markdown(generate_leaderboard_html(follower_by_account), unsafe_allow_html=True)
+
+                    add_table_from_df_to_slide(presentation=presentation, slide=None, df=follower_by_account, title="Top 20 Akun Loker Follower Terbanyak")
 
         # Total Posts by Sumber Media Sosial
         with top_chart[1]:

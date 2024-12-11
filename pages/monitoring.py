@@ -103,6 +103,7 @@ st.markdown("""
                 padding-right: 40px;
                 padding-top: 20px;
                 padding-bottom: 40px;
+                max-width: 1400px;
             }
         }
             

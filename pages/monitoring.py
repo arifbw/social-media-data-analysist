@@ -293,9 +293,9 @@ def get_coordinates(province_name):
     else:
         return None, None
     
-original_kd = ["Jabatan", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
+original_kd = ["Jabatan", "Jabatan Detail", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
       "Tunjangan", "Jenis Kelamin", "Cara Kerja", "Lokasi", "Lokasi Kota", 
-      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Jabatan Detail", "Persepsi"]
+      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Persepsi"]
 
 if "kd" not in st.session_state:
     st.session_state["kd"] = original_kd
@@ -681,11 +681,62 @@ def masukan_ke_data_config_filter(label, df):
 def format_datetime_to_string(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
+def get_chart_type(data_type,list_of_chart):
+    if data_type == "Bidang":
+        return list_of_chart[7]  # Treemap
+    elif data_type == "Jabatan":
+        return list_of_chart[8]  # Radar Chart
+    elif data_type == "Tipe Pekerjaan":
+        return list_of_chart[6]  # Funnel Chart
+    elif data_type == "Tingkat Pekerjaan":
+        return list_of_chart[1]  # Horizontal Bar Chart
+    elif data_type == "Tingkat Pendidikan":
+        return list_of_chart[9]  # Sunburst Chart
+    elif data_type == "Pengalaman Kerja":
+        return list_of_chart[4]  # Line Chart
+    elif data_type == "Tunjangan":
+        return list_of_chart[5]  # Area Chart
+    elif data_type == "Jenis Kelamin":
+        return list_of_chart[0]  # Pie Chart
+    elif data_type == "Cara Kerja":
+        return list_of_chart[3]  # Scatter Plot
+    elif data_type == "Lokasi":
+        return list_of_chart[9]  # Sunburst Chart
+    elif data_type == "Lokasi Kota":
+        return list_of_chart[7]  # Treemap
+    elif data_type == "Keterampilan Bahasa":
+        return list_of_chart[3]  # Scatter Plot
+    elif data_type == "Keterampilan Teknis":
+        return list_of_chart[8]  # Radar Chart
+    elif data_type == "Keterampilan Non Teknis":
+        return list_of_chart[8]  # Radar Chart
+    elif data_type == "Rentang Gaji":
+        return list_of_chart[4]  # Line Chart
+    elif data_type == "Ukuran Perusahaan":
+        return list_of_chart[7]  # Treemap
+    elif data_type == "Indikasi Scam":
+        return list_of_chart[5]  # Area Chart
+    elif data_type == "Persepsi":
+        return list_of_chart[2]  # Vertical Bar Chart
+    else:
+        return "Unknown Chart Type"
+
 @st.fragment
 def draw_chart(idx, item, aw, is_media_online):
     with st.container(border=True, key=f"chart_card_{idx}"):
         with st.spinner('Preparing data...'):
             category_count = get_category_counts(item, aw, is_media_online)
+
+            # Rename Data
+            match item:
+                case "Jabatan":
+                    item = "Bidang"
+                case "Jabatan Detail":
+                    item = "Jabatan"
+                case "Scam Detector":
+                    item = "Indikasi Scam"
+                case _:
+                    item = item
 
             if category_count.empty:
                    st.write(f"##### Data :red[{item}] Tidak Tersedia")
@@ -717,17 +768,25 @@ def draw_chart(idx, item, aw, is_media_online):
                         "Radar Chart",
                         "Sunburst Chart",
                     ]
+
+                    
+                    chart_type = get_chart_type(item, list_of_chart)
                     # Add dropdown for chart type selection
+
+                    default_idx = list_of_chart.index(chart_type)
+
                     chart_type = st.selectbox(
-                        "Pilih jenis chart:",
+                        "Ganti Tipe Chart :",
                         list_of_chart,
+                        index=default_idx,
+                        placeholder="Ganti Tipe Chart disini ...",
                         key=f"chart_type_{idx}"
                     )
     
                 with cols[1]:
                     sort_chart = st.selectbox(
                         "Urutkan Data Chart:",
-                        ["Jumlah Paling Banyak", "Jumlah Paling Sedikit", "Urutkan Manual"] if len(category_count) <= 5 else ["Jumlah Paling Banyak", "Jumlah Paling Sedikit"],
+                        ["Jumlah Paling Banyak", "Jumlah Paling Sedikit", "Urutkan Manual"] if len(category_count) <= 10 else ["Jumlah Paling Banyak", "Jumlah Paling Sedikit"],
                         key=f"chart_sort_{idx}"
                     )
                 
@@ -740,14 +799,24 @@ def draw_chart(idx, item, aw, is_media_online):
                     category_count = category_count.set_index(item).loc[custom_order].reset_index()
                 else:
                     st.write("Tampilkan Data:")
+                    default_length = len(category_count)
                     col = st.columns([1,6], gap="small", vertical_alignment="bottom")
 
                     with col[0]:
+                        data_awal = 1
+                        
+                        if len(category_count) <=9:
+                            data_awal = len(category_count)
+                        elif len(category_count) > 9 and len(category_count)  <= 60:
+                            data_awal = round(len(category_count) / 3)
+                        else:
+                            data_awal = 25
+
                         data_limit = st.number_input(
                             "",
                             min_value=1,
                             max_value=len(category_count),
-                            value=len(category_count) if len(category_count) <=9 else round(len(category_count) / 3),
+                            value=data_awal,
                             step=10,
                             key=f"data_limit_{idx}",
                             label_visibility="collapsed"
@@ -756,12 +825,12 @@ def draw_chart(idx, item, aw, is_media_online):
                         category_count = category_count.sort_values(by='Count', ascending=True if sort_chart=="Jumlah Paling Sedikit" else False)
                         category_count = category_count.head(data_limit)
                     with col[1]:
-                        st.write(f"{item} {sort_chart}")
+                        st.write(f"{item} {sort_chart}, dari :red[{default_length}] Data.")
                     # st.radio("Tampilkan Data :", [f"10 {item} {sort_chart}",f"15 {item} {sort_chart}",f"20 {item} {sort_chart}",f"25 {item} {sort_chart}",f"30 {item} {sort_chart}"])
                     # category_count = category_count.head(data_limit)
 
             # chart_type = random.choice(list_of_chart)
-            chart_type = list_of_chart[idx % len(list_of_chart)] if idx > 0 and chart_type=="Pie Chart" else chart_type
+            # chart_type = list_of_chart[idx % len(list_of_chart)] if idx > 0 and chart_type=="Pie Chart" else chart_type
             # Tabs for chart and data
 
             with tab_chart[0]:  # Chart tab

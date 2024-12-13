@@ -167,6 +167,11 @@ st.markdown("""
         [class*="st-key-chart_card_"] div[data-baseweb='tab-highlight'], [class*="st-key-chart_card_"] div[data-baseweb='tab-border']{
             display: none;    
         }
+            
+        [class*="st-key-chart_card_"] .stNumberInput input{
+            background: white;
+            border-bottom: 1px solid gray;
+        }
     </style>
 """, unsafe_allow_html=True)
 ps.setup_style_awal(st)
@@ -290,12 +295,14 @@ def get_coordinates(province_name):
     
 original_kd = ["Jabatan", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
       "Tunjangan", "Jenis Kelamin", "Cara Kerja", "Lokasi", "Lokasi Kota", 
-      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji"]
+      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Jabatan Detail", "Persepsi"]
 
 if "kd" not in st.session_state:
     st.session_state["kd"] = original_kd
     
 kd = st.session_state["kd"]
+
+is_media_online = False
 
 # Function to save figure and add to PowerPoint
 def save_chart_to_slide(presentation, fig, title, df=None):
@@ -385,12 +392,17 @@ def get_all_column():
     return None
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_top_accounts(alur_waktu):
+def get_top_accounts(alur_waktu, is_media_online):
+    match_stage = {
+        "Klasifikasi Akun": "Akun Loker",
+        "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+    }
+
+    if not is_media_online:
+        match_stage["Sumber"] = {"$ne": "Media Online"}
+
     pipeline = [
-        {"$match": {
-            "Klasifikasi Akun": "Akun Loker",
-            "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
-        }},  # Filter by category
+        {"$match": match_stage},  # Filter by category
         {
             "$group": {
                 "_id": "$Akun/Judul",
@@ -411,18 +423,26 @@ def get_top_accounts(alur_waktu):
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_total_posts_by_classification(alur_waktu):
+def get_total_posts_by_classification(alur_waktu, is_media_online):
+    match_stage = { "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}}
+
+    if not is_media_online:
+        match_stage["Sumber"] = {"$ne": "Media Online"}
+
     pipeline = [
-        {"$match": { "Tanggal Publikasi": {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}}},
+        {"$match": match_stage},
         {"$group": {"_id": "$Klasifikasi Akun", "Count": {"$sum": 1}}}
     ]
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_category_counts(category_field,alur_waktu):
+def get_category_counts(category_field,alur_waktu,is_media_online):
     # If the category is "Jenis Kelamin", handle it specifically
     match_stage = {"$match": {}}
     match_stage["$match"]["Tanggal Publikasi"] = {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+    
+    if not is_media_online:
+        match_stage["$match"]["Sumber"] = {"$ne": "Media Online"}
     
     if "conditional_tree_query" in st.session_state:
         conditional_tree_query = st.session_state["conditional_tree_query"]
@@ -616,6 +636,10 @@ def show_konfig_dashboard():
             # with col[0]:
             # with  col[1]:
 
+            # st.write("#### Tampilkan Data Media Online :")
+            
+
+
             st.write("#### Urutan Data Chart :")
             revised_kd = sort_items(kd, direction="horizontal")
 
@@ -657,10 +681,11 @@ def masukan_ke_data_config_filter(label, df):
 def format_datetime_to_string(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-def draw_chart(idx, item, aw):
+@st.fragment
+def draw_chart(idx, item, aw, is_media_online):
     with st.container(border=True, key=f"chart_card_{idx}"):
         with st.spinner('Preparing data...'):
-            category_count = get_category_counts(item, aw)
+            category_count = get_category_counts(item, aw, is_media_online)
 
             if category_count.empty:
                    st.write(f"##### Data :red[{item}] Tidak Tersedia")
@@ -680,18 +705,6 @@ def draw_chart(idx, item, aw):
                 cols = st.columns(2)
 
                 with cols[0]:
-                # Input for limiting data points
-                    data_limit = st.number_input(
-                        "Tampilkan jumlah data maksimal:",
-                        min_value=1,
-                        max_value=len(category_count),
-                        value=len(category_count),
-                        step=1,
-                        key=f"data_limit_{idx}"
-                    )
-                    category_count = category_count.head(data_limit)
-                
-                with cols[1]:
                     list_of_chart = [
                         "Pie Chart",
                         "Horizontal Bar Chart",
@@ -711,13 +724,41 @@ def draw_chart(idx, item, aw):
                         key=f"chart_type_{idx}"
                     )
     
-                # Let the user define a custom order using streamlit_sortables
-                st.write("Urutkan data:")
-                default_order = list(category_count[item])
-                custom_order = sort_items(default_order)
+                with cols[1]:
+                    sort_chart = st.selectbox(
+                        "Urutkan Data Chart:",
+                        ["Jumlah Paling Banyak", "Jumlah Paling Sedikit", "Urutkan Manual"] if len(category_count) <= 5 else ["Jumlah Paling Banyak", "Jumlah Paling Sedikit"],
+                        key=f"chart_sort_{idx}"
+                    )
                 
-                # Reorder the data based on the user's custom sort
-                category_count = category_count.set_index(item).loc[custom_order].reset_index()
+                
+                # Let the user define a custom order using streamlit_sortables
+                if sort_chart == "Urutkan Manual":
+                    st.write("Urutkan data:")
+                    default_order = list(category_count[item])
+                    custom_order = sort_items(default_order)
+                    category_count = category_count.set_index(item).loc[custom_order].reset_index()
+                else:
+                    st.write("Tampilkan Data:")
+                    col = st.columns([1,6], gap="small", vertical_alignment="bottom")
+
+                    with col[0]:
+                        data_limit = st.number_input(
+                            "",
+                            min_value=1,
+                            max_value=len(category_count),
+                            value=len(category_count) if len(category_count) <=9 else round(len(category_count) / 3),
+                            step=10,
+                            key=f"data_limit_{idx}",
+                            label_visibility="collapsed"
+                        )
+
+                        category_count = category_count.sort_values(by='Count', ascending=True if sort_chart=="Jumlah Paling Sedikit" else False)
+                        category_count = category_count.head(data_limit)
+                    with col[1]:
+                        st.write(f"{item} {sort_chart}")
+                    # st.radio("Tampilkan Data :", [f"10 {item} {sort_chart}",f"15 {item} {sort_chart}",f"20 {item} {sort_chart}",f"25 {item} {sort_chart}",f"30 {item} {sort_chart}"])
+                    # category_count = category_count.head(data_limit)
 
             # chart_type = random.choice(list_of_chart)
             chart_type = list_of_chart[idx % len(list_of_chart)] if idx > 0 and chart_type=="Pie Chart" else chart_type
@@ -937,7 +978,7 @@ with st.container(border=True):
     col = st.columns([3.5,1,1], vertical_alignment="center")
 
     with col[0]:
-        st.write("## Analisa Data 🕵️‍♂️🚀")
+        st.write("## Dashboard Analisa Data 🕵️‍♂️🚀")
         st.write("###### Semua Data Hasil Scraping & Klasifikasi")
     with col[1]:
         popover = st.popover("Export Data", icon=":material/download:", use_container_width=True)
@@ -954,7 +995,7 @@ with st.container(border=True):
     main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
     with main_tabs[0]:
-        col = st.columns([3.5,1], vertical_alignment="center")
+        col = st.columns([3.3,0.7,1], vertical_alignment="center")
 
         default_start_date = datetime(2024, 7, 1)
         default_end_date = datetime(2024, 12, 31)
@@ -962,6 +1003,8 @@ with st.container(border=True):
         with col[0]:
             st.write("#### Ringkasan Data")
         with col[1]:
+            is_media_online = st.toggle("Media Online", value=is_media_online)
+        with col[2]:
             # Use st.date_input for a date range
             col_child = st.columns([1, 10], vertical_alignment="center", gap="small")
 
@@ -995,13 +1038,18 @@ with st.container(border=True):
         with col[0]:
             with st.container(key="card_dashoard_1"):
                 start_date, end_date = aw[0], aw[1]
-                
-                data_count_in_range = collection.count_documents({
+
+                query = {
                     "Tanggal Publikasi": {
                         "$gte": start_date,
                         "$lt": end_date
                     }
-                })
+                }
+
+                if not is_media_online:
+                    query["Sumber"] = {"$ne": "Media Online"}
+                
+                data_count_in_range = collection.count_documents(query)
 
                 # Query total data up to the start and end dates for comparison
                 total_data_up_to_start = collection.count_documents({
@@ -1024,16 +1072,20 @@ with st.container(border=True):
 
                 with col_child[0]:
                     st.metric("Total Data Scraping", f"{data_count_in_range:,}".replace(",", "."), delta=f"{percentage_difference}%")
+
                 with col_child[1]:
                     st.image("https://cdn-icons-gif.flaticon.com/8112/8112604.gif", use_container_width=True)
         with col[1]:
             with st.container(key="card_dashoard_2"):
-                total_lowongan = collection.count_documents({
-                    "$and": [
-                        {"Persentase Lowongan": {"$gt": 20}},
-                        {"Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}
-                    ]
-                })
+                query_conditions = [
+                    {"Persentase Lowongan": {"$gt": 20}},
+                    {"Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}
+                ]
+
+                if not is_media_online:
+                    query_conditions.append({"Sumber": {"$ne": "Media Online"}})
+
+                total_lowongan = collection.count_documents({"$and": query_conditions})
 
                 col_child = st.columns([2.5,1])
 
@@ -1043,8 +1095,13 @@ with st.container(border=True):
                     st.image("https://cdn-icons-gif.flaticon.com/6172/6172508.gif", use_container_width=True)
         with col[2]:
             with st.container(key="card_dashoard_3"):
+                match_stage = {"$match": {"Persentase Lowongan": {"$gt": 20}, "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}}
+
+                if not is_media_online:
+                    match_stage["$match"]["Sumber"] = {"$ne": "Media Online"}
+
                 pipeline = [
-                    {"$match": {"Persentase Lowongan": {"$gt": 20}, "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}}},
+                    match_stage,
                     {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kouta (Clean)"}}}
                 ]
 
@@ -1067,7 +1124,7 @@ with st.container(border=True):
             with col[1]:
                 format_map = st.radio("", ["Map 2D", "Map 3D"], horizontal=True, label_visibility="collapsed")
 
-            df_lokasi = get_category_counts("Lokasi",aw)
+            df_lokasi = get_category_counts("Lokasi",aw, is_media_online)
             df_lokasi.columns = ["Lokasi", 'Count']
 
             # Add coordinates to the DataFrame
@@ -1129,7 +1186,7 @@ with st.container(border=True):
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
                     st.write("##### Top 20 :red[Akun Loker Follower] Terbanyak")
-                    follower_by_account = get_top_accounts(aw)
+                    follower_by_account = get_top_accounts(aw,is_media_online)
                     # st.dataframe(follower_by_account, hide_index=True, use_container_width=True)
 
                     st.markdown(generate_leaderboard_html(follower_by_account), unsafe_allow_html=True)
@@ -1142,11 +1199,16 @@ with st.container(border=True):
                 with st.spinner('Preparing data.'):
                     st.write("##### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
                     
+                    match_stage = {
+                        "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}
+                    }
+
+                    if not is_media_online:
+                        match_stage["Sumber"] = {"$ne": "Media Online"}
+
                     # Query to count each source
                     source_count = collection.aggregate([
-                        {"$match": {
-                            "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}
-                        }},
+                        {"$match": match_stage},
                         {"$group": {"_id": "$Sumber", "Count": {"$sum": 1}}}
                     ])
                     source_count_df = pd.DataFrame(list(source_count))
@@ -1164,7 +1226,7 @@ with st.container(border=True):
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
                     st.write("##### Total Postingan Berdasarkan :red[Klasifikasi Akun]")
-                    sentimen_count = get_total_posts_by_classification(aw)
+                    sentimen_count = get_total_posts_by_classification(aw,is_media_online)
                     sentimen_count.columns = ['Klasifikasi Akun', 'Count']
                     fig_sentimen = px.bar(sentimen_count, x='Klasifikasi Akun', y='Count', color_discrete_sequence=color_sequence)
                     st.plotly_chart(fig_sentimen)
@@ -1180,10 +1242,10 @@ with st.container(border=True):
         for idx, item in enumerate(kd):
             if idx % 2 == 0:
                 with kolom_loop[0]:
-                    draw_chart(idx,item,aw)
+                    draw_chart(idx,item,aw,is_media_online)
             else:
                 with kolom_loop[1]:
-                    draw_chart(idx,item,aw)
+                    draw_chart(idx,item,aw,is_media_online)
         
         
         if "presentation" not in st.session_state:

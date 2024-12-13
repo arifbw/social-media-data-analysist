@@ -15,6 +15,7 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 import page_service as ps
+import config_klasifikasi as ck
 from streamlit_tags import st_tags
 import json
 
@@ -56,7 +57,8 @@ final_df = pd.DataFrame()
 
 # Variable2 Step Klasifikasi Berurutan
 kat_akun_loker = None
-keywords = None
+config_klasifikasi = []
+keywords = []
 nilai_rentang_gaji = {
     "pre": [],
     "succ": []
@@ -403,7 +405,6 @@ def get_collections_with_prefix(prefix):
     filtered_collections = [coll for coll in collections if coll.startswith(prefix)]
     return filtered_collections
 
-
 def execute_query_builder(db_source, fields, sort_fields, sort_order_value):
     result = None
     
@@ -430,7 +431,6 @@ def execute_query_builder(db_source, fields, sort_fields, sort_order_value):
         result = {"msg": "Error."}
 
     return result
-
 
 def parse_json_telegram(json_data, keywords):
     messages = json_data.get("messages", [])
@@ -486,6 +486,15 @@ def parse_json_telegram(json_data, keywords):
 
     # Create DataFrame
     return pd.DataFrame(rows)
+
+# Fungsi-fungsi Konfig Klasifikasi
+def init_config_klasifikasi(arrModeKlasifikasi):
+    for mode in arrModeKlasifikasi:
+        config_klasifikasi.append(mode)
+
+
+def konfig_klasifikasi_by_kamus_data(idx):
+    st.write("test")
 
 # Modal & Dialog
 @st.dialog("Download disini :")
@@ -580,6 +589,7 @@ else:
                     padding-right: 40px;
                     padding-top: 20px;
                     padding-bottom: 40px;
+                    max-width: 1300px;
                 }
             }
                 
@@ -599,6 +609,10 @@ else:
                 overflow: visible;
                 transform: translate(calc(-100% - 15px), 45px);
                 width: 40px;
+            }
+                
+            .box-test.add{
+                top: -20px;
             }
                     
             .box-test > div.line{
@@ -798,7 +812,214 @@ else:
                         result_list = execute_query_builder(db_source, fields, sort_fields, sort_order_value)
                         st.json(result_list, expanded=False)
 
+        # Pilih Metode Klasifikasi
+        with st.container(border=True, key="pil_metode"):
+            st.html(f"""
+                <div class="box-test">
+                    <div class="line black"></div>
+                    <div class="step">2</div>
+                </div>
+            """)
+
+            st.markdown("""
+                <style>
+                    [class*="st-key-pil_metode"] [data-testid="stWidgetLabel"] p > span{
+                        padding: 5px 10px !important;
+                        font-size: 14px !important;
+                        font-weight: 900;
+                        border-radius: 10px !important;
+                        zoom: 0.8;
+                    }
                         
+                    [class*="st-key-pil_metode"] [data-testid="stWidgetLabel"] p > span:nth-child(1){
+                        background: #ffd951 !important;
+                        color: black !important;
+                    }
+                        
+                    [class*="st-key-pil_metode"] [data-testid="stWidgetLabel"] p > span:nth-child(2){
+                        background: #6b6c6f !important;
+                        color: white !important;
+                    }
+                        
+                    @media (max-width: 767px) {
+                        [class*="st-key-pil_metode"] div[data-baseweb='tab-list']{
+                            zoom: 0.5 !important;
+                        }
+                    }
+
+                    [class*="st-key-pil_metode"] div[data-baseweb='tab-list']{
+                        gap: 0px;
+                        justify-content: center;
+                        zoom: 0.8;
+                    }
+                        
+                    [class*="st-key-pil_metode"] button[data-baseweb='tab']{
+                        padding: 0px 50px;
+                        border: 2px solid gray;
+                        border-radius: 10px;
+                    }
+                        
+                    [class*="st-key-pil_metode"] button[data-baseweb='tab']:hover{
+                        border: 2px solid red;    
+                    }
+
+                    [class*="st-key-pil_metode"] button[aria-selected='true']{
+                        border: 2px solid red;
+                        background: #ffeded;
+                    } 
+                    
+                    [class*="st-key-pil_metode"] button[aria-selected='true'] *{
+                        font-weight: 900;
+                    }
+
+                    [class*="st-key-pil_metode"] button[data-baseweb='tab']:nth-child(1){
+                        border-top-right-radius: 0px;
+                        border-bottom-right-radius: 0px;
+                        # border-right: unset;
+                    }
+                    
+                    [class*="st-key-pil_metode"] button[data-baseweb='tab']:nth-child(2){
+                        border-radius: unset;
+                    }
+                        
+                    [class*="st-key-pil_metode"] button[data-baseweb='tab']:nth-child(3){
+                        border-top-left-radius: 0px;
+                        border-bottom-left-radius: 0px;
+                    }
+                        
+                    [class*="st-key-pil_metode"] div[data-baseweb='tab-highlight'], [class*="st-key-pil_metode"] div[data-baseweb='tab-border']{
+                        display: none;    
+                    }
+                        
+                    [class*="st-key-card_klasifikasi_"] div.stExpander > details{
+                        border: unset !important;
+                    }
+                    
+                    [class*="st-key-card_klasifikasi_"] div.stExpander summary{
+                        padding: unset;
+                    }
+                        
+                    [class*="st-key-card_klasifikasi_"] div.stExpander summary svg{
+                        display: none;
+                    }
+                        
+                    [class*="st-key-card_klasifikasi_"] div[data-testid="stExpanderDetails"]{
+                        padding: 20px 10px;
+                        background: #f4f4f4;
+                        border-radius: 20px;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
+            st.subheader('Metode Klasifikasi')
+
+            # Read JSON data from a local file
+            file_path = "metode_klasifikasi_2.json"  # Replace with your file path
+
+            metode_klasifikasi = []
+            
+            with open(file_path, "r") as file:
+                list_metode_klasifikasi = json.load(file)
+
+            num_columns = 3
+            
+            tabs = st.tabs(["Pilih Metode", "Urutan Metode", "Detail Metode"])
+
+            with tabs[0]:
+                st.write('Pilih Metode Klasifikasi yang di pakai, dengan AI maupun Non-AI :')
+                with st.container(border=False, height=300):
+                    columns = st.columns(num_columns)
+                    for index, method in enumerate(list_metode_klasifikasi):
+                        column_index = index % num_columns
+
+                        is_ai = f':blue[{method["AI/Non-AI"]}]' if method["AI/Non-AI"] == "With AI" else f':red[{method["AI/Non-AI"]}]'
+                        
+                        with columns[column_index]:
+                            if st.checkbox(f'{method["Name of Method"]}\n\n:red[{method["Category"]}] {is_ai}', key=f"method_{index}", disabled=not method["Is Implemented"]):
+                                metode_klasifikasi.append(method)
+            with tabs[1]:
+                st.write("Under Development")
+            with tabs[2]:
+                st.dataframe(list_metode_klasifikasi)
+            # metode_klasifikasi = st.multiselect("", ["Klasifikasi By Pattern", "Klasifikasi By Kamus Data", "Klasifikasi By Proceeding & Succeeding", "Bobot Klasifikasi (%)"], label_visibility="collapsed", placeholder="Pilih Metode disini ...")
+
+            # if st.button("Tambah Klasifikasi", use_container_width=True, icon=":material/add:")
+            init_config_klasifikasi(metode_klasifikasi)
+
+            
+        
+        # Klasifikasi Dinamis
+        for idx, m_klasifikasi in enumerate(metode_klasifikasi):
+            with st.container(border=True, key=f"card_klasifikasi_{idx}"):
+                st.html(f"""
+                    <div class="box-test">
+                        <div class="line black"></div>
+                        <div class="step">{idx+3}</div>
+                    </div>
+                """)
+
+                col = st.columns([3,1.2], vertical_alignment="center")
+                
+                with col[0]:
+                    st.subheader(f'{m_klasifikasi["Name of Method"]}')
+                with col[1]:
+                    config_kd = st.popover("Konfigurasi", icon=":material/tune:", use_container_width=True)
+
+                config_kd.write("##### Daftar Klasifikasi Data :")
+
+                with config_kd.container():
+                    st.markdown("<div style='width: 400px;'></div>", unsafe_allow_html=True)
+                    
+                    if 'list_klasifikasi_data' not in config_klasifikasi[idx]:
+                        config_klasifikasi[idx]["list_klasifikasi_data"] = [
+                            {"Judul": "Klasifikasi 1", "Dari Kolom": "" }
+                        ]
+
+                        nd = pd.DataFrame(config_klasifikasi[idx]["list_klasifikasi_data"])
+                        nd["Dari Kolom"] = nd["Dari Kolom"].astype("category")
+                        nd["Dari Kolom"] = nd["Dari Kolom"].cat.add_categories(("☯ Neutral", "😤 Negative"))
+
+                    df = st.data_editor(nd, num_rows="dynamic", key=f"de_{idx}", use_container_width=True, hide_index=True)
+                    filtered_df = df[
+                        df["Judul"].apply(lambda x: isinstance(x, str)) &
+                        df["Dari Kolom"].apply(lambda x: isinstance(x, str))
+                    ]
+                    
+                    config_klasifikasi[idx]["list_klasifikasi_data"] = filtered_df 
+
+                if not config_klasifikasi[idx]["list_klasifikasi_data"].empty:
+
+                    with st.expander(f'This Method {m_klasifikasi["Short Description"]}', expanded=False):
+                        st.write(f'{m_klasifikasi["Long Description"]}')
+                        st.write("##### Example Case :")
+                        st.code(f'{m_klasifikasi["Example Case"]}')
+            
+                    judul_array = config_klasifikasi[idx]["list_klasifikasi_data"]["Judul"].tolist()
+                    
+                    tabs_kd = st.tabs(judul_array)
+
+                    for idx2, tab_kd in enumerate(tabs_kd):
+                        with tab_kd:
+                            match m_klasifikasi["id"]:
+                                case "BW-001":
+                                    ck.konfig_klasifikasi_bw001(idx2,config, st_tags)
+                                case "BW-004":
+                                    ck.konfig_klasifikasi_bw004(idx2,config, st)
+                                case "BW-006":
+                                    ck.konfig_klasifikasi_bw006(idx2,config, st_tags)
+                                case _:
+                                    col = st.columns([1,3,1])
+                                    with col[1]:
+                                        st.image("https://www.rackh.com/wp-content/uploads/2023/06/18771510_6029646-800x400.jpg", use_container_width=True)
+                                        st.write("### :red[Method Not Implemented]")
+
+                                    st.caption(f'Metode :blue[{m_klasifikasi["Name of Method"]}] untuk klasifikasi teks saat ini masih dalam tahap pengembangan dan belum diimplementasikan. Proses pengembangan melibatkan penelitian mendalam, pengujian algoritma, serta integrasi ke dalam sistem yang ada untuk memastikan metode ini dapat memenuhi kebutuhan pengguna dengan optimal.')
+                else:
+                    st.write("Belum ada Klasifikasi Kamus Data.")
+
+        # Preview Data Config
+        st.json(config_klasifikasi, expanded=False)
+
         # Klasifikasi Akun by Pattern
         with st.container(border=True):
             st.html(f"""
@@ -824,7 +1045,7 @@ else:
                 maxtags = 200,
                 key='1')
         
-        # Klasifikasi Lowongan & Non-Lowongan by Kamus Data
+        # Klasifikasi Lowongan by Kamus Data
         with st.container(border=True):
             st.html(f"""
                 <div class="box-test">
@@ -833,53 +1054,71 @@ else:
                 </div>
             """)
 
-            st.subheader('Klasifikasi By Kamus Data')
+            col = st.columns([3,1.2], vertical_alignment="bottom")
+            
+            with col[0]:
+                st.subheader('Klasifikasi By Kamus Data')
+            with col[1]:
+                config_kd = st.popover("Kamus Data", icon=":material/settings:", use_container_width=True)
 
-            st.write("Berikut klasifikasi berdasarkan Kamus Data.")
-
-            tab1, tab2 = st.tabs(["Lowongan", "Non-Lowongan"])
-
-            with tab1:
-                workbook = load_workbook('kamus_data.xlsx', read_only=True)
-
-                visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
-
-                if config:
-                    if config["keywords"] == visible_sheets:
-                        data_default_keywords = config["keywords"]
-                    else: 
-                        data_default_keywords = visible_sheets
-                else:
-                    data_default_keywords = visible_sheets
-
-                keywords = st.multiselect(
-                    "Kamus Data Analisa Semantik terkait Lowongan :",
-                    options=visible_sheets,
-                    default=data_default_keywords
+            with config_kd.container():
+                list_kbkd = st_tags(
+                    label="#### Masukan Kamus Data :",
+                    text='Tekan Enter Untuk Tambah ...',
+                    maxtags = 200,
+                    value=["Lowongan", "Persepsi Netizen"],
+                    key='data_kd'
                 )
 
-                
-                left, right = st.columns([2,1])
+            # st.subheader('Klasifikasi By Kamus Data')
+            if list_kbkd:
+                st.write("Berikut klasifikasi berdasarkan Kamus Data.")
 
-                with right:
-                    popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True, disabled=not is_superadmin)
+                tabs_kd = st.tabs(list_kbkd)
 
-                    with open("kamus_data.xlsx", "rb") as file:
-                        popover.download_button(
-                            label="Unduh Kamus Data",
-                            data=file,
-                            file_name="kamus_data.xlsx",
-                            use_container_width=True,
-                            icon=":material/download:",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                for idx, tab_kd in enumerate(tabs_kd):
+                    with tab_kd:
+                        workbook = load_workbook('kamus_data.xlsx', read_only=True)
+
+                        visible_sheets = [sheet for sheet in workbook.sheetnames if workbook[sheet].sheet_state == 'visible']
+
+                        if config:
+                            if config["keywords"] == visible_sheets:
+                                data_default_keywords = config["keywords"]
+                            else: 
+                                data_default_keywords = visible_sheets
+                        else:
+                            data_default_keywords = visible_sheets
+
+                        keywords = st.multiselect(
+                            "Kamus Data Analisa Semantik terkait Lowongan :",
+                            options=visible_sheets,
+                            default=data_default_keywords,
+                            key=f"keywords-{idx}"
                         )
 
-                    if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:"):
-                        update_kamus_data()
-                
-            with tab2:
-                st.write("Mohon Maaf, Klasifikasi Non-Lowongan masih tahap Pengembamgan.")
-        
+                        
+                        left, right = st.columns([2,1])
+
+                        with right:
+                            popover = st.popover("Opsi Kamus Data", icon=":material/settings:", use_container_width=True, disabled=not is_superadmin)
+
+                            with open("kamus_data.xlsx", "rb") as file:
+                                popover.download_button(
+                                    label="Unduh Kamus Data",
+                                    data=file,
+                                    file_name="kamus_data.xlsx",
+                                    use_container_width=True,
+                                    icon=":material/download:",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key=f"download-kd-{idx}"
+                                )
+
+                            if popover.button("Ganti Kamus Data",use_container_width=True,icon=":material/sync:", key=f"ganti-kd-{idx}"):
+                                update_kamus_data()
+            else:
+                st.write("Belum ada Klasifikasi Kamus Data.")
+
         # Klasifikasi Rengang Gaji & Kouta Lowongan by Proceeding & Succeding
         with st.container(border=True):
             st.html(f"""
@@ -982,7 +1221,7 @@ else:
             else:
                 st.write(":green[*Total Data Bobot Sudah PAS 100%]")
         
-        # Konfigurasi ETL
+        # Output Klasifikasi
         with st.container(border=True):
             st.html(f"""
                 <div class="box-test">
@@ -1054,7 +1293,7 @@ else:
                 st.toast("Berhasil Menyimpan Konfigurasi!")
 
         with right:
-            eksekusi = st.button("Jalankan Proses", type="primary", icon="▶️", use_container_width=True, disabled=not is_superadmin)
+            eksekusi = st.button("Jalankan Proses", type="primary", icon=":material/play_arrow:", use_container_width=True, disabled=not is_superadmin)
 
         if(eksekusi):
             # Proses By Data Source Type

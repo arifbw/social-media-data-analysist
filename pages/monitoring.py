@@ -24,6 +24,7 @@ from streamlit_sortables import sort_items
 from streamlit_condition_tree import condition_tree
 
 import random
+import json
 
 
 from pptx.dml.color import RGBColor
@@ -437,91 +438,102 @@ def get_total_posts_by_classification(alur_waktu, is_media_online):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_category_counts(category_field,alur_waktu,is_media_online):
-    # If the category is "Jenis Kelamin", handle it specifically
-    match_stage = {"$match": {}}
-    match_stage["$match"]["Tanggal Publikasi"] = {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
-    
-    if not is_media_online:
-        match_stage["$match"]["Sumber"] = {"$ne": "Media Online"}
-    
-    if "conditional_tree_query" in st.session_state:
-        conditional_tree_query = st.session_state["conditional_tree_query"]
+    try:
+        # If the category is "Jenis Kelamin", handle it specifically
+        match_stage = {"$match": {}}
+        match_stage["$match"]["Tanggal Publikasi"] = {"$gte": alur_waktu[0], "$lte": alur_waktu[1]}
+        
+        if not is_media_online:
+            match_stage["$match"]["Sumber"] = {"$ne": "Media Online"}
+        
+        if "conditional_tree_query" in st.session_state:
+            conditional_tree_query = st.session_state["conditional_tree_query"]
 
-        for key, value in conditional_tree_query.items():
-            if value == "all":
-                # If the value is "all", do not add it to the match stage
-                continue
-            else:
-                # If it's not "all", add the condition to $match
-                match_stage["$match"][key] = value
+            for key, value in conditional_tree_query.items():
+                if value == "all":
+                    # If the value is "all", do not add it to the match stage
+                    continue
+                else:
+                    # If it's not "all", add the condition to $match
+                    match_stage["$match"][key] = value
 
-    if category_field == "Jenis Kelamin":
-        pipeline = [
-            match_stage,
-            {
-                "$project": {
-                    "Jenis Kelamin": {
-                        "$cond": [
-                            {
-                                "$eq": [
-                                    {"$size": {"$setIntersection": [{"$ifNull": ["$Jenis Kelamin", []]}, ["Laki-Laki", "Perempuan"]]}},
-                                    2
-                                ]
-                            },
-                            "Laki-laki & Perempuan",  # Both genders are present
-                            {"$arrayElemAt": ["$Jenis Kelamin", 0]}  # Just one gender
-                        ]
-                    }
-                }
-            },
-            {"$group": {"_id": "$Jenis Kelamin", "Count": {"$sum": 1}}},
-            {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
-        ]
-    elif category_field == "Rentang Gaji":
-        match_stage["$match"]["Digit Gaji (Clean)"] = {"$ne": None}
-        pipeline = [
-            match_stage,
-            {
-                "$bucket": {
-                    "groupBy": "$Digit Gaji (Clean)",  # Field to group by
-                    "boundaries": [0, 3000000, 6000000, 10000000],  # Ranges
-                    "default": "lebih dari 10jt",  # Label for outliers
-                    "output": {
-                        "Count": {"$sum": 1}  # Count documents in each bucket
-                    }
-                }
-            },
-            {
-                "$project": {
-                    "Rentang Gaji": {
-                        "$switch": {  # Custom range labels
-                            "branches": [
-                                {"case": {"$eq": ["$_id", 0]}, "then": "kurang dari 3jt"},
-                                {"case": {"$eq": ["$_id", 3000000]}, "then": "3jt - 5,9jt"},
-                                {"case": {"$eq": ["$_id", 6000000]}, "then": "6jt - 9,9jt"}
-                            ],
-                            "default": "lebih dari 10jt"
+        if category_field == "Jenis Kelamin":
+            pipeline = [
+                match_stage,
+                {
+                    "$project": {
+                        "Jenis Kelamin": {
+                            "$cond": [
+                                {
+                                    "$eq": [
+                                        {"$size": {"$setIntersection": [{"$ifNull": ["$Jenis Kelamin", []]}, ["Laki-Laki", "Perempuan"]]}},
+                                        2
+                                    ]
+                                },
+                                "Laki-laki & Perempuan",  # Both genders are present
+                                {"$arrayElemAt": ["$Jenis Kelamin", 0]}  # Just one gender
+                            ]
                         }
-                    },
-                    "Count": 1,
-                    "_id": 0
-                }
-            }
+                    }
+                },
+                {"$group": {"_id": "$Jenis Kelamin", "Count": {"$sum": 1}}},
+                {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
+            ]
+        elif category_field == "Rentang Gaji":
+            match_stage["$match"]["Digit Gaji (Clean)"] = {"$ne": None}
             
-        ]
+            pipeline = [
+                match_stage,
+                {
+                    "$bucket": {
+                        "groupBy": "$Digit Gaji (Clean)",  # Field to group by
+                        "boundaries": [0, 3000000, 6000000, 10000000],  # Ranges
+                        "default": "lebih dari 10jt",  # Label for outliers
+                        "output": {
+                            "Count": {"$sum": 1}  # Count documents in each bucket
+                        }
+                    }
+                },
+                {
+                    "$project": {
+                        "Rentang Gaji": {
+                            "$switch": {  # Custom range labels
+                                "branches": [
+                                    {"case": {"$eq": ["$_id", 0]}, "then": "kurang dari 3jt"},
+                                    {"case": {"$eq": ["$_id", 3000000]}, "then": "3jt - 5,9jt"},
+                                    {"case": {"$eq": ["$_id", 6000000]}, "then": "6jt - 9,9jt"}
+                                ],
+                                "default": "lebih dari 10jt"
+                            }
+                        },
+                        "Count": 1,
+                        "_id": 0
+                    }
+                }
+                
+            ]
+        else:
+            # Default pipeline for other categories
+            pipeline = [
+                match_stage,
+                {"$unwind": f"${category_field}"},
+                {"$group": {"_id": f"${category_field}", "Count": {"$sum": 1}}},
+                {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
+            ]
+        # st.write(match_stage)
+        
+        # Execute the aggregation pipeline and return as DataFrame
+        result = pd.DataFrame(list(collection.aggregate(pipeline)))
 
-    else:
-        # Default pipeline for other categories
-        pipeline = [
-            match_stage,
-            {"$unwind": f"${category_field}"},
-            {"$group": {"_id": f"${category_field}", "Count": {"$sum": 1}}},
-            {"$match": {"_id": {"$ne": "tdk_ada_informasi"}}}
-        ]
-    # st.write(match_stage)
+        
+        if result.empty:
+            result = pd.DataFrame(columns=[category_field, "Count"])
+
+    except Exception as e:
+        result = pd.DataFrame(columns=[category_field, "Count"])
+
     
-    # Execute the aggregation pipeline and return as DataFrame
-    return pd.DataFrame(list(collection.aggregate(pipeline)))
+    return result
 
 @st.dialog("Download disini :")
 def save_ppt():
@@ -590,6 +602,8 @@ def save_excel():
     except:
         st.info("Mohon menunggu sampai data dashboard dan data scraping selesai ter-muat.", icon=":material/info:")
 
+def rename_keys(data, key_mapping):
+    return {key_mapping.get(key, key): value for key, value in data.items()}
 
 def generate_default_condition_tree(fields):
     return {
@@ -615,59 +629,75 @@ def generate_default_condition_tree(fields):
         ]
     }
 
-@st.dialog("Konfigurasi Dashboard :", width="large")
+@st.dialog("Sort & Filter Chart Data :", width="large")
 def show_konfig_dashboard():
     # st.write("##### Urutan Data : ")
     # st.rerun()
 
-    if "data_config_filter" not in st.session_state:
-        st.write("tunggu hingga loading selesai")
+    # st.json(st.session_state["data_config_filter"], expanded=False)
 
-    else:
-        if "data_config_filter_tmp" not in st.session_state:
-            st.session_state["data_config_filter_tmp"] = st.session_state["data_config_filter"].copy()
 
-        st.json(st.session_state["data_config_filter_tmp"], expanded=False)
-        config = st.session_state["data_config_filter_tmp"]
+    with open("konfig.json", 'r') as file:
+        config = json.load(file)
+
+    # config = json.load(data)
+    if "tree" not in st.session_state:
         value = generate_default_condition_tree(config["fields"])
+    else:
+        value = st.session_state["tree"]
 
-        with st.container(border=True):
-            # col = st.columns([3,1.2])
-            # with col[0]:
-            # with  col[1]:
 
-            # st.write("#### Tampilkan Data Media Online :")
+    with st.container(border=True):
+        # col = st.columns([3,1.2])
+        # with col[0]:
+        # with  col[1]:
+
+        # st.write("#### Tampilkan Data Media Online :")
+        
+
+
+        st.write("#### Urutan Data Chart :")
             
+        revised_kd = sort_items(kd, direction="horizontal")
+
+        st.write("#### Filter Data Chart :")
+        query_tmp = condition_tree(
+            config,
+            tree=value,
+            always_show_buttons=True,
+            return_type='mongodb',
+            placeholder="Tambahkan Rule Baru",
+            key="tree"
+        )
+
+    cols = st.columns(3)
+
+    with cols[2]:
+        if st.button("Terapkan", use_container_width=True, type="primary", icon=":material/play_arrow:"):
+            # Re-rename Data
+
+            key_mapping = {
+                "Jabatan": "Jabatan Detail",
+                "Bidang": "Jabatan",
+                "Indikasi Scam": "Scam Detector",
+            }
+
+            query_tmp = rename_keys(query_tmp, key_mapping)
+
+            st.session_state["kd"] = revised_kd
+            st.session_state["conditional_tree_query"] = query_tmp
+            
+            st.cache_data.clear()
+            st.rerun(scope='app')
+        
 
 
-            st.write("#### Urutan Data Chart :")
-            revised_kd = sort_items(kd, direction="horizontal")
-
-            st.write("#### Filter Data Chart :")
-            query_tmp = condition_tree(
-                config,
-                tree=value,
-                always_show_buttons=True,
-                return_type='mongodb',
-                placeholder="Tambahkan Rule Baru",
-                key="tree"
-            )
-
-        cols = st.columns(3)
-
-        with cols[2]:
-            if st.button("Simpan", use_container_width=True, type="primary", icon=":material/save:"):
-                st.session_state["kd"] = revised_kd
-                st.session_state["conditional_tree_query"] = query_tmp
-                st.cache_data.clear()
-                st.rerun()
-
-if "data_config_filter" not in st.session_state:
-    st.session_state["data_config_filter"] = {
-        'fields': {}
-    }
 
 def masukan_ke_data_config_filter(label, df):
+    if "data_config_filter" not in st.session_state:
+        st.session_state["data_config_filter"] = {
+            'fields': {}
+        }
     st.session_state["data_config_filter"]["fields"][label] = {
         "label": label,
         "type": "select",
@@ -799,7 +829,7 @@ def draw_chart(idx, item, aw, is_media_online):
                     category_count = category_count.set_index(item).loc[custom_order].reset_index()
                 else:
                     st.write("Tampilkan Data:")
-                    default_length = len(category_count)
+                    default_count = category_count
                     col = st.columns([1,6], gap="small", vertical_alignment="bottom")
 
                     with col[0]:
@@ -825,7 +855,7 @@ def draw_chart(idx, item, aw, is_media_online):
                         category_count = category_count.sort_values(by='Count', ascending=True if sort_chart=="Jumlah Paling Sedikit" else False)
                         category_count = category_count.head(data_limit)
                     with col[1]:
-                        st.write(f"{item} {sort_chart}, dari :red[{default_length}] Data.")
+                        st.write(f"{item} {sort_chart}, dari :red[{len(default_count)}] Data.")
                     # st.radio("Tampilkan Data :", [f"10 {item} {sort_chart}",f"15 {item} {sort_chart}",f"20 {item} {sort_chart}",f"25 {item} {sort_chart}",f"30 {item} {sort_chart}"])
                     # category_count = category_count.head(data_limit)
 
@@ -916,7 +946,7 @@ def draw_chart(idx, item, aw, is_media_online):
             with tab_chart[1]:  # Data tab
                 st.dataframe(category_count, hide_index=True, use_container_width=True)
 
-    masukan_ke_data_config_filter(item, category_count)
+    masukan_ke_data_config_filter(item, default_count)
     # Add spacing after the chart
     st.text("")
     st.text("")
@@ -1035,6 +1065,11 @@ def generate_leaderboard_html(dataframe):
 
     return leaderboard_html
 
+@st.fragment
+def fragment_button_konfigurasi():
+    if st.button("Sort & Filter Data", type="primary", icon=":material/tune:", use_container_width=True):
+        show_konfig_dashboard()
+
 total_docs = collection.count_documents({})
 
 filter_option = {
@@ -1058,8 +1093,8 @@ with st.container(border=True):
         if popover.button("Scraping (XLSX)", icon=":material/table:", use_container_width=True):
             save_excel()
     with col[2]:
-        if st.button("Konfigurasi", type="primary", icon=":material/settings:", use_container_width=True):
-            show_konfig_dashboard()
+        fragment_button_konfigurasi()
+        
 
     main_tabs = st.tabs(["Dashboard", "Scraping Data"])
     
@@ -1196,11 +1231,15 @@ with st.container(border=True):
             df_lokasi = get_category_counts("Lokasi",aw, is_media_online)
             df_lokasi.columns = ["Lokasi", 'Count']
 
-            # Add coordinates to the DataFrame
-            df_lokasi[['lat', 'lon']] = df_lokasi['Lokasi'].apply(lambda x: pd.Series(get_coordinates(x)))
+            if df_lokasi.empty:
+                df_lokasi = pd.DataFrame(columns=["Lokasi", "Count", "lat", "lon"])
+            else:
+                # Add coordinates to the DataFrame
+                df_lokasi[['lat', 'lon']] = df_lokasi['Lokasi'].apply(lambda x: pd.Series(get_coordinates(x)))
 
-            # Filter out any rows with missing coordinates
-            df_lokasi = df_lokasi.dropna(subset=['lat', 'lon'])
+                # Filter out any rows with missing coordinates
+                df_lokasi = df_lokasi.dropna(subset=['lat', 'lon'])
+            
             df_lokasi['Size'] = df_lokasi['Count'] * 5  # Scale the size by multiplying by 100
             df_lokasi['Elevation'] = df_lokasi['Count'] * 5  # Scale the elevation by multiplying by 100
             

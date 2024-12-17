@@ -184,6 +184,9 @@ st.logo(img_logo, size="large")
 if(authenticator):
     ps.setup_st_sidebar(st, authenticator)
 
+with open("konfig.json", 'r') as file:
+    config = json.load(file)
+
 #init DB
 @st.cache_resource
 def init_connection():
@@ -296,7 +299,7 @@ def get_coordinates(province_name):
     
 original_kd = ["Jabatan", "Jabatan Detail", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
       "Tunjangan", "Jenis Kelamin", "Cara Kerja", "Lokasi", "Lokasi Kota", 
-      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Persepsi"]
+      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Sentimen", "Persepsi"]
 
 if "kd" not in st.session_state:
     st.session_state["kd"] = original_kd
@@ -437,7 +440,7 @@ def get_total_posts_by_classification(alur_waktu, is_media_online):
     return pd.DataFrame(list(collection.aggregate(pipeline)))
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_category_counts(category_field,alur_waktu,is_media_online):
+def get_category_counts(category_field,alur_waktu,is_media_online,custom_query=None):
     try:
         # If the category is "Jenis Kelamin", handle it specifically
         match_stage = {"$match": {}}
@@ -446,6 +449,9 @@ def get_category_counts(category_field,alur_waktu,is_media_online):
         if not is_media_online:
             match_stage["$match"]["Sumber"] = {"$ne": "Media Online"}
         
+        if custom_query and custom_query[1]:
+            match_stage["$match"][custom_query[0]] = custom_query[1]
+
         if "conditional_tree_query" in st.session_state:
             conditional_tree_query = st.session_state["conditional_tree_query"]
 
@@ -636,11 +642,6 @@ def show_konfig_dashboard():
 
     # st.json(st.session_state["data_config_filter"], expanded=False)
 
-
-    with open("konfig.json", 'r') as file:
-        config = json.load(file)
-
-    # config = json.load(data)
     if "tree" not in st.session_state:
         value = generate_default_condition_tree(config["fields"])
     else:
@@ -690,9 +691,6 @@ def show_konfig_dashboard():
             st.cache_data.clear()
             st.rerun(scope='app')
         
-
-
-
 def masukan_ke_data_config_filter(label, df):
     if "data_config_filter" not in st.session_state:
         st.session_state["data_config_filter"] = {
@@ -749,13 +747,25 @@ def get_chart_type(data_type,list_of_chart):
     elif data_type == "Persepsi":
         return list_of_chart[2]  # Vertical Bar Chart
     else:
-        return "Unknown Chart Type"
+        return list_of_chart[0]
 
 @st.fragment
 def draw_chart(idx, item, aw, is_media_online):
     with st.container(border=True, key=f"chart_card_{idx}"):
         with st.spinner('Preparing data...'):
-            category_count = get_category_counts(item, aw, is_media_online)
+            cols = st.columns([6,1])
+
+            with cols[0]:
+                st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
+            with cols[1]:
+                popover = st.popover("", icon=":material/filter_alt:")
+
+            data_selected = popover.selectbox("Pilih Data :", config["fields"], key=f"popover_kd{idx}")
+            arr_value = [item["title"] for item in config["fields"][data_selected]["fieldSettings"]["listValues"]]
+            value_selected = popover.multiselect("Nilai Data :", arr_value, key=f"popover_kd_value{idx}")
+            custom_query = [data_selected, value_selected]
+
+            category_count = get_category_counts(item, aw, is_media_online,custom_query)
 
             # Rename Data
             match item:
@@ -774,9 +784,7 @@ def draw_chart(idx, item, aw, is_media_online):
                    st.image("https://cdn.vectorstock.com/i/500p/04/13/no-data-empty-concept-vector-41830413.jpg", use_container_width=True)
 
                    return
-            st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
 
-            
             tab_chart = st.tabs(["Chart", "Data", "Settings"])
             
             with tab_chart[2]:
@@ -946,7 +954,7 @@ def draw_chart(idx, item, aw, is_media_online):
             with tab_chart[1]:  # Data tab
                 st.dataframe(category_count, hide_index=True, use_container_width=True)
 
-    masukan_ke_data_config_filter(item, default_count)
+    # masukan_ke_data_config_filter(item, default_count)
     # Add spacing after the chart
     st.text("")
     st.text("")
@@ -1228,7 +1236,7 @@ with st.container(border=True):
             with col[1]:
                 format_map = st.radio("", ["Map 2D", "Map 3D"], horizontal=True, label_visibility="collapsed")
 
-            df_lokasi = get_category_counts("Lokasi",aw, is_media_online)
+            df_lokasi = get_category_counts("Lokasi",aw, is_media_online, None)
             df_lokasi.columns = ["Lokasi", 'Count']
 
             if df_lokasi.empty:
@@ -1327,7 +1335,7 @@ with st.container(border=True):
                     st.plotly_chart(fig_source_pie)
                     save_chart_to_slide(presentation, fig_source_pie, "Distribusi Sumber Sosial Media", source_count_df)
 
-                    masukan_ke_data_config_filter("Sumber", source_count_df)
+                    # masukan_ke_data_config_filter("Sumber", source_count_df)
 
         # Total Posts by Account Classification
         with top_chart[2]:
@@ -1340,7 +1348,7 @@ with st.container(border=True):
                     st.plotly_chart(fig_sentimen)
                     save_chart_to_slide(presentation, fig_sentimen, "Total Postingan Berdasarkan Klasifikasi Akun", sentimen_count)
 
-                    masukan_ke_data_config_filter("Klasifikasi Akun", sentimen_count)
+                    # masukan_ke_data_config_filter("Klasifikasi Akun", sentimen_count)
         
         st.text("")
         st.text("")

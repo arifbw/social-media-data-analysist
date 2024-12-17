@@ -9207,6 +9207,30 @@
                     }
                 ]
             }
+        },
+        "Sentimen": {
+            "label": "Sentimen",
+            "type": "select",
+            "fieldSettings": {
+                "listValues": [
+                    {
+                        "value": "Positif",
+                        "title": "Positif"
+                    },
+                    {
+                        "value": "Negatif",
+                        "title": "Negatif"
+                    },
+                    {
+                        "value": "Netral",
+                        "title": "Netral"
+                    },
+                    {
+                        "value": "all",
+                        "title": "Semua Klasifikasi"
+                    }
+                ]
+            }
         }
     }
 }

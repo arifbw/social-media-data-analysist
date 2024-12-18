@@ -542,16 +542,24 @@ def update_kamus_data():
 
 
 if not st.session_state.authentication_status:
-    st.write("# Social Media Data Analysist 📈🚀")
-    st.subheader("Dashboard for Insight & Semantic Data Analysist")
+    st.markdown("""
+        <style>
+            .stFormSubmitButton {
+                text-align: end;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns([2.5,1], vertical_alignment="center", gap="large")
-    with col1:
-        image_login = Image.open('login_analis.jpg')
-        st.image(image_login, use_container_width=True)
-    with col2:
+    cols = st.columns([2,1], vertical_alignment="top", gap="large")
+    with cols[0]:
+        st.write("# Social Media Data Analysist 📈🚀")
+        st.subheader("Dashboard for Insight & Semantic Data Analysist")
+
+        image_login = Image.open('login_analisis_new.webp')
+        st.image(image_login, width=450)
+    with cols[1]:
         try: 
-            authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'Lanjukan', 'Captcha':'Masukan Kode di bawah :'}), captcha=True)
+            authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'🔑 Akses Dashboard', 'Captcha':'Masukan Kode di bawah (Captcha) :'}), captcha=True)
         except Exception as e:
             st.toast(e)
 else:

@@ -10,6 +10,15 @@ def setup_style_awal(st):
 def setup_st_sidebar(st, authenticator):
     st.markdown("""
         <style>
+            @media (min-width: 1024px) {
+                .stMainBlockContainer{
+                    padding-left: 40px;
+                    padding-right: 40px;
+                    padding-top: 20px;
+                    padding-bottom: 40px;
+                    max-width: 1400px;
+                }
+            }
             .stAppHeader{
                 background: #ffe0dc;
                 box-shadow: 0px 5px 10px 1px rgba(0, 0, 0, 0.2);
@@ -36,11 +45,13 @@ def setup_st_sidebar(st, authenticator):
         st.sidebar.page_link('streamlit_app.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
         # st.sidebar.page_link('pages/klasifikasi_old.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
         st.sidebar.page_link('pages/monitoring.py', label='Analisa Data', icon=":material/monitoring:")
-        st.sidebar.page_link('pages/kelola_data.py', label='Kelola Data', icon=":material/database:")
+        st.sidebar.page_link('pages/kelola_data.py', label='Kelola Data Scraping', icon=":material/database:")
         st.sidebar.page_link('pages/bnh_detector.py', label='Bot & Hoax Detector', icon=":material/smart_toy:")
     else:
         st.sidebar.page_link('streamlit_app.py', label='Klasifikasi Text', icon=":material/precision_manufacturing:")
         st.sidebar.page_link('pages/monitoring.py', label='Analisa Data', icon=":material/monitoring:")
+        st.sidebar.page_link('pages/kelola_data.py', label='Kelola Data Scraping', icon=":material/database:")
+        st.sidebar.page_link('pages/bnh_detector.py', label='Bot & Hoax Detector', icon=":material/smart_toy:")
     
     st.sidebar.text("")
     st.sidebar.text("")

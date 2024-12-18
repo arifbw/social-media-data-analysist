@@ -97,17 +97,7 @@ if not st.session_state.authentication_status:
     st.switch_page("streamlit_app.py")
 
 st.markdown("""
-    <style>
-        @media (min-width: 1024px) {
-            .stMainBlockContainer{
-                padding-left: 40px;
-                padding-right: 40px;
-                padding-top: 20px;
-                padding-bottom: 40px;
-                max-width: 1400px;
-            }
-        }
-            
+    <style> 
         [class*="st-key-card_dashoard_"]{
             padding: 15px 20px;
             border-radius: 5px;
@@ -200,97 +190,6 @@ collection = db["hasil_proses_v1"]
 # st.write("# Analisa Data 🕵️‍♂️🚀")
 # st.subheader("Semua Data Hasil Scraping & Klasifikasi")
 
-
-def fetch_data(search_query, sort_by, sort_dir):
-    query = {}
-
-    if search_query:
-        query = {"$text": {"$search": search_query}}
-
-    page = st.session_state["page"] if "page" in st.session_state else 0
-    page_size = st.session_state["page_size"] if "page_size" in st.session_state else 10
-    
-    sort_direction = ASCENDING if sort_dir == "🔼" else DESCENDING
-    
-    cursor = collection.find(query).sort(sort_by, sort_direction).skip(page * page_size).limit(page_size)
-    data = list(cursor)
-    
-    df = pd.DataFrame(data)
-
-    if '_id' in df.columns:
-        df = df.drop(columns=['_id'])
-    
-
-    start_index = page * page_size
-    df.index = range(start_index, start_index + len(df))
-
-    return df
-
-def fetch_data(search_query, sort_by, sort_dir, filters, page, page_size):
-    # Initialize query
-    query = {}
-    page = page - 1
-
-    # Apply text search if provided
-    if search_query:
-        query["$text"] = {"$search": search_query}
-    
-    if "tanggal" in filters:
-        start_date, end_date = [
-            date if isinstance(date, str) else date.strftime("%Y-%m-%d")
-            for date in filters["tanggal"]
-        ]
-        query["Tanggal Publikasi"] = {"$gte": start_date, "$lte": end_date}
-
-    # Apply filter for "Klasifikasi Akun"
-    if "jenis_akun" in filters:
-        query["Klasifikasi Akun"] = {"$in": filters["jenis_akun"]}
-    
-    # Apply filter for "Sumber"
-    if "sumber" in filters:
-        query["Sumber"] = {"$in": filters["sumber"]}
-
-    # Pagination settings
-    # page = st.session_state.get("page", 0)
-    # page_size = st.session_state.get("page_size", 10)
-    
-    # Sorting direction
-    sort_direction = ASCENDING if sort_dir == "🔼" else DESCENDING
-
-    # Fetch filtered and sorted data from MongoDB
-    if(page_size!="all"):
-        cursor = (
-            collection.find(query)
-            .sort(sort_by, sort_direction)
-            .skip(page * page_size)
-            .limit(page_size)
-        )
-    else:
-        cursor = (
-            collection.find(query)
-            .sort(sort_by, sort_direction)
-        )
-    data = list(cursor)
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-
-    # Remove MongoDB ID column
-    if '_id' in df.columns:
-        df = df.drop(columns=['_id'])
-
-    # Apply column selection filter
-    if "list_kolom" in filters:
-        available_columns = [col for col in filters["list_kolom"] if col in df.columns]
-        df = df[available_columns]
-
-    # Update DataFrame index to match pagination
-    if(page_size!="all"):
-        start_index = page * page_size
-        df.index = range(start_index, start_index + len(df))
-
-    return df
-
 def get_coordinates(province_name):
     if province_name in coordinates_data:
         return coordinates_data[province_name]
@@ -299,7 +198,7 @@ def get_coordinates(province_name):
     
 original_kd = ["Jabatan", "Jabatan Detail", "Tipe Pekerjaan", "Tingkat Pekerjaan", "Tingkat Pendidikan", "Pengalaman Kerja", 
       "Tunjangan", "Jenis Kelamin", "Cara Kerja", "Lokasi", "Lokasi Kota", 
-      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan", "Scam Detector", "Sentimen", "Persepsi"]
+      "Keterampilan Bahasa", "Keterampilan Teknis", "Keterampilan Non Teknis", "Rentang Gaji", "Ukuran Perusahaan"]
 
 if "kd" not in st.session_state:
     st.session_state["kd"] = original_kd
@@ -580,14 +479,16 @@ def save_ppt():
 @st.dialog("Download disini :")
 def save_excel():
     try:
-        fo = st.session_state["filter_option"]
+        # fo = st.session_state["filter_option"]
         mv = st.session_state["max_value"]
         # st.write(fo)
         rd = st.slider("Rentang Data : ", value=[1,5000], min_value=1, max_value=mv)
         
         with st.spinner("Menyiapkan File Excel ..."):
-            df = fetch_data(search_query=None, sort_by="Tanggal Publikasi", sort_dir="🔼", filters=fo, page=rd[0], page_size=rd[1])
-
+            # df = fetch_data(search_query=None, sort_by="Tanggal Publikasi", sort_dir="🔼", filters=fo, page=rd[0], page_size=rd[1])
+            df = None
+            return
+        
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
@@ -1078,20 +979,12 @@ def fragment_button_konfigurasi():
     if st.button("Sort & Filter Data", type="primary", icon=":material/tune:", use_container_width=True):
         show_konfig_dashboard()
 
-total_docs = collection.count_documents({})
-
-filter_option = {
-    "list_kolom": None,
-    "tanggal": None,
-    "jenis_akun": None,
-    "sumber": None
-}
 with st.container(border=True):
     col = st.columns([3.5,1,1], vertical_alignment="center")
 
     with col[0]:
         st.write("## Dashboard Analisa Data 🕵️‍♂️🚀")
-        st.write("###### Semua Data Hasil Scraping & Klasifikasi")
+        st.write("###### Menampilkan Semua Data Hasil Klasifikasi Data Scraping Sosial Media & Media Online")
     with col[1]:
         popover = st.popover("Export Data", icon=":material/download:", use_container_width=True)
 
@@ -1104,7 +997,7 @@ with st.container(border=True):
         fragment_button_konfigurasi()
         
 
-    main_tabs = st.tabs(["Dashboard", "Scraping Data"])
+    main_tabs = st.tabs(["Lowongan Pekerjaan", "Persepsi & Sentimen Netizen"])
     
     with main_tabs[0]:
         col = st.columns([3.3,0.7,1], vertical_alignment="center")
@@ -1364,93 +1257,18 @@ with st.container(border=True):
                     draw_chart(idx,item,aw,is_media_online)
         
         
+    with main_tabs[1]:
+        kd_netizen = ["Sentimen", "Persepsi"]
+
+        kolom_loop = st.columns(2, gap="medium")
+        
+        with kolom_loop[0]:
+            draw_chart(len(kd), kd_netizen[0], aw, is_media_online)
+        with kolom_loop[1]:
+            draw_chart(len(kd) + 1, kd_netizen[1], aw, is_media_online)
+
+
         if "presentation" not in st.session_state:
             st.session_state["presentation"] = None
 
         st.session_state["presentation"] = presentation
-        
-        # with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as ppt_file:
-            # presentation.save(ppt_file.name)
-            # st.download_button("Download PowerPoint", ppt_file.name, file_name="dashboard_presentation.pptx")
-
-        
-        # presentation.save("test.pptx")
-
-    with main_tabs[1]:
-        top_section = st.columns([1,2.2], gap="small")
-        list_kolom = collection.find_one().keys()
-
-        with top_section[0]:
-            # Date filter options
-            with st.container(border=True, height=700):
-                st.write("##### Filter Data Table :")
-
-                search_query = st.text_input("Search Data Posting :", placeholder="Cari data postingan disini ...")
-
-                filter_option["list_kolom"] = st.multiselect("Kolom di tampilkan", list_kolom, ["Akun/Judul", "Konten", "Sumber"])
-
-                excluded_columns = ["_id", "UUID", "Topik", "Konten"]
-                columns = [key for key in list_kolom if key not in excluded_columns]
-                sort_by = st.selectbox("Sort By :", options=columns)
-                
-                sort_dir = st.radio("Direction", options=["🔼", "🔽"], horizontal=True)
-
-                filter_option["tanggal"] = st.date_input('Rentang Waktu :', [datetime(2024, 7, 1), datetime.now()])
-
-                # st.write("Jenis Akun :")
-                
-                with st.expander("Jenis Akun:", expanded=True):
-                    selected_jenis_akun = []
-                    options = ["Akun Loker", "Akun Netizen", "Akun Pers"]
-
-                    for option in options:
-                        if st.checkbox(option, value=True):
-                            selected_jenis_akun.append(option)
-
-                filter_option["jenis_akun"] = selected_jenis_akun
-
-                # st.write("Sumber Sosmed :")
-                with st.expander("Sumber Sosmed:", expanded=False):
-                    selected_sumber = []
-                    options = ["Twitter", "Instagram", "Facebook", "Tiktok", "Linkedin", "Youtube"]
-
-                    for option in options:
-                        if st.checkbox(option,value=True):
-                            selected_sumber.append(option)
-
-                filter_option["sumber"] = selected_sumber
-
-        with top_section[1]:
-            with st.container(border=True):
-                st.write("##### Scrapping Data Table :")
-
-                with st.spinner('Preparing data.'):
-                    try:
-                        down_menu = st.columns([1,4,1.5])
-
-                        with down_menu[0]:
-                            page_size = st.selectbox("Rows per page", options=[50, 100, 150, 200, 250])
-                            total_pages = round(total_docs / page_size)
-
-                        with down_menu[1]:
-                            st.text("")
-
-                        with down_menu[2]:
-                            page = st.number_input("Page", min_value=1, max_value=total_pages, step=1, key="a")
-
-                        # Fetch and display the data
-                        st.session_state["filter_option"] = filter_option
-                        st.session_state["max_value"] = total_docs
-                        df = fetch_data(search_query, sort_by, sort_dir, filter_option, page, page_size)
-                        st.dataframe(df, use_container_width=True, height=500)
-
-                        down_menu = st.columns([2,4,1])
-                        with down_menu[0]:
-                            st.write(f"**Total Data**: {total_docs}")
-                        with down_menu[1]:
-                            st.text("")
-                        with down_menu[2]:
-                            st.write(f"**Page**: {page} / {total_pages}")
-                    except Exception as e:
-                        st.info("")
-                        st.error("Gagal Menyiapkan Data." + str(e))

@@ -590,15 +590,10 @@ else:
             #editorCanvas > div.node-editor > .background{
                 background-color: rgb(113, 113, 113) !important;
             }
-            
-            @media (min-width: 1024px) {
-                .stMainBlockContainer{
-                    padding-left: 40px;
-                    padding-right: 40px;
-                    padding-top: 20px;
-                    padding-bottom: 40px;
-                    max-width: 1300px;
-                }
+                
+            div.stMainBlockContainer.block-container > div > div > div > div.stHorizontalBlock > div.stColumn:nth-child(2) > div > div > div > div[data-testid='stVerticalBlockBorderWrapper']{
+                border: 3px solid #666566;
+                # background: #fff9f7;
             }
                 
             .stMainBlockContainer.block-container > div > div > div > div > div.stColumn:nth-child(1) > div{
@@ -675,7 +670,7 @@ else:
     col1, col2 = st.columns([1.5,2], gap="large")
 
     with col2:
-        st.write("### :red[Urutan Alur Kerja Klasifikasi :]")
+        st.write("### Urutan Alur Kerja Klasifikasi :")
         list_collection = get_collections_with_prefix("hasil_proses_")
 
         # Sumber Klasifikasi

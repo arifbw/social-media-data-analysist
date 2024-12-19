@@ -70,7 +70,16 @@ def fetch_data_scam():
     collection = db["hasil_proses_v1"]
     query = {
         "Scam Detector": {"$all": ["Terindikasi Scam"]},
-        "Persentase Lowongan": {"$gt": 20}
+        "Persentase Lowongan": {"$gt": 20},
+        "Keterampilan Teknis": {"$all": ["tdk_ada_informasi"]},
+        "Keterampilan Non Teknis": {"$all": ["tdk_ada_informasi"]},
+        "Keterampilan Bahasa": {"$all": ["tdk_ada_informasi"]},
+        "Konten": {
+            "$not": {
+                "$regex": "(hindari|waspada|hati-hati|awas)", 
+                "$options": "i"
+            }
+        }
     }
     projection = {
         "Akun/Judul": 1,
@@ -79,7 +88,6 @@ def fetch_data_scam():
         "Scam Detector": 1,
         "Persentase Lowongan": 1,
         "Sumber": 1,
-        "Digit Gaji (Clean)": 1,
         "_id": 0  # Exclude the MongoDB "_id" field
     }
     data = list(collection.find(query, projection))

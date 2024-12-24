@@ -288,6 +288,8 @@ def get_kamus_data():
 
     return result
 
+
+# Funtion2 Utilitas
 def contains_number_or_word(sentence):
     # Check if the sentence contains any digit
     if re.search(r'\d', sentence):
@@ -373,7 +375,6 @@ def extract_quota(text):
     # Ambil angka pertama yang ditemukan (karena biasanya kuota hanya satu angka yang dominan)
     return quotas[0] if quotas else 1
 
-# Funtion2 Utilitas
 @st.cache_resource
 def init_connection():
     return pymongo.MongoClient(**st.secrets["mongo"])

@@ -580,7 +580,7 @@ def show_konfig_dashboard():
 
             key_mapping = {
                 "Jabatan": "Jabatan Detail",
-                "Bidang": "Jabatan",
+                "Bidang Jabatan": "Jabatan",
                 "Indikasi Scam": "Scam Detector",
             }
 
@@ -611,7 +611,7 @@ def format_datetime_to_string(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 def get_chart_type(data_type,list_of_chart):
-    if data_type == "Bidang":
+    if data_type == "Bidang Jabatan":
         return list_of_chart[7]  # Treemap
     elif data_type == "Jabatan":
         return list_of_chart[8]  # Radar Chart
@@ -656,8 +656,6 @@ def draw_chart(idx, item, aw, is_media_online):
         with st.spinner('Preparing data...'):
             cols = st.columns([6,1])
 
-            with cols[0]:
-                st.write(f'##### Distribusi Data :red[{item}] di Setiap Postingan')
             with cols[1]:
                 popover = st.popover("", icon=":material/filter_alt:")
 
@@ -671,7 +669,7 @@ def draw_chart(idx, item, aw, is_media_online):
             # Rename Data
             match item:
                 case "Jabatan":
-                    item = "Bidang"
+                    item = "Bidang Jabatan"
                 case "Jabatan Detail":
                     item = "Jabatan"
                 case "Scam Detector":
@@ -679,6 +677,9 @@ def draw_chart(idx, item, aw, is_media_online):
                 case _:
                     item = item
 
+            with cols[0]:
+                st.write(f'##### Visualisasi Data :red[{item}] di Setiap Postingan')
+            
             if category_count.empty:
                    st.write(f"##### Data :red[{item}] Tidak Tersedia")
                    st.write(f"Data {item} tidak tesedia berdasarkan Filter yang dipilih.")
@@ -706,6 +707,7 @@ def draw_chart(idx, item, aw, is_media_online):
                         "Treemap",
                         "Radar Chart",
                         "Sunburst Chart",
+                        "Donut Chart"
                     ]
 
                     
@@ -846,6 +848,14 @@ def draw_chart(idx, item, aw, is_media_online):
                     fig = px.sunburst(
                         category_count,
                         path=[item],
+                        values='Count',
+                        color_discrete_sequence=color_sequence
+                    )
+                elif chart_type == "Donut Chart":
+                    fig = px.pie(
+                        category_count,
+                        names=item,
+                        hole=0.5,
                         values='Count',
                         color_discrete_sequence=color_sequence
                     )
@@ -1107,7 +1117,7 @@ with st.container(border=True):
 
                 pipeline = [
                     match_stage,
-                    {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kouta (Clean)"}}}
+                    {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kuota (Clean)"}}}
                 ]
 
                 # Menjalankan pipeline
@@ -1117,7 +1127,7 @@ with st.container(border=True):
                 col_child = st.columns([2.5,1])
                 
                 with col_child[0]:
-                    st.metric("Total Kouta Pekerjaan", f"{round(total_quota):,}".replace(",", "."), delta="0%")
+                    st.metric("Total Kuota Pekerjaan", f"{round(total_quota):,}".replace(",", "."), delta="0%")
                 with col_child[1]:
                     st.image("https://cdn-icons-gif.flaticon.com/7211/7211849.gif", use_container_width=True)
 
@@ -1206,7 +1216,7 @@ with st.container(border=True):
         with top_chart[1]:
             with st.container(border=True):
                 with st.spinner('Preparing data.'):
-                    st.write("##### Distribusi Data Berdasarkan :red[Sumber Sosial Media]")
+                    st.write("##### Visualisasi Data Berdasarkan :red[Sumber Sosial Media]")
                     
                     match_stage = {
                         "Tanggal Publikasi": {"$gte": aw[0], "$lte": aw[1]}

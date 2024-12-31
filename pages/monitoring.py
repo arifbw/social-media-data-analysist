@@ -612,37 +612,37 @@ def format_datetime_to_string(dt):
 
 def get_chart_type(data_type,list_of_chart):
     if data_type == "Bidang Jabatan":
-        return list_of_chart[7]  # Treemap
+        return list_of_chart[2]  # Vertical Bar Chart
     elif data_type == "Jabatan":
-        return list_of_chart[8]  # Radar Chart
+        return list_of_chart[2]  # Vertical Bar Chart
     elif data_type == "Tipe Pekerjaan":
-        return list_of_chart[6]  # Funnel Chart
-    elif data_type == "Tingkat Pekerjaan":
-        return list_of_chart[1]  # Horizontal Bar Chart
-    elif data_type == "Tingkat Pendidikan":
-        return list_of_chart[9]  # Sunburst Chart
-    elif data_type == "Pengalaman Kerja":
-        return list_of_chart[4]  # Line Chart
-    elif data_type == "Tunjangan":
-        return list_of_chart[5]  # Area Chart
-    elif data_type == "Jenis Kelamin":
         return list_of_chart[0]  # Pie Chart
-    elif data_type == "Cara Kerja":
-        return list_of_chart[3]  # Scatter Plot
-    elif data_type == "Lokasi":
-        return list_of_chart[9]  # Sunburst Chart
-    elif data_type == "Lokasi Kota":
-        return list_of_chart[7]  # Treemap
+    elif data_type == "Tingkat Pekerjaan":
+        return list_of_chart[0]  # Pie Chart
+    elif data_type == "Jenjang Pendidikan":
+        return list_of_chart[1]  # Horizontal Bar Chart
+    elif data_type == "Pengalaman Kerja":
+        return list_of_chart[1]  # Horizontal Bar Chart
+    elif data_type == "Tunjangan":
+        return list_of_chart[10]  # Donut Chart
+    elif data_type == "Jenis Kelamin":
+        return list_of_chart[10]  # Donut Chart
+    elif data_type == "Model Kerja":
+        return list_of_chart[10]  # Donut Chart
+    elif data_type == "Provinsi":
+        return list_of_chart[2]  # Vertical Bar Chart
+    elif data_type == "Kota / Kabupaten":
+        return list_of_chart[2]  # Vertical Bar Chart
     elif data_type == "Keterampilan Bahasa":
-        return list_of_chart[3]  # Scatter Plot
+        return list_of_chart[1]  # Horizontal Bar Chart
     elif data_type == "Keterampilan Teknis":
-        return list_of_chart[8]  # Radar Chart
+        return list_of_chart[1]  # Horizontal Bar Chart
     elif data_type == "Keterampilan Non Teknis":
-        return list_of_chart[8]  # Radar Chart
+        return list_of_chart[1]  # Horizontal Bar Chart
     elif data_type == "Rentang Gaji":
-        return list_of_chart[4]  # Line Chart
+        return list_of_chart[2]  # Vertical Bar Chart
     elif data_type == "Ukuran Perusahaan":
-        return list_of_chart[7]  # Treemap
+        return list_of_chart[2]  # Vertical Bar Chart
     elif data_type == "Indikasi Scam":
         return list_of_chart[5]  # Area Chart
     elif data_type == "Persepsi":
@@ -674,6 +674,14 @@ def draw_chart(idx, item, aw, is_media_online):
                     item = "Jabatan"
                 case "Scam Detector":
                     item = "Indikasi Scam"
+                case "Tingkat Pendidikan":
+                    item = "Jenjang Pendidikan"
+                case "Cara Kerja":
+                    item = "Model Kerja"
+                case "Lokasi":
+                    item = "Provinsi"
+                case "Lokasi Kota":
+                    item = "Kota / Kabupaten"
                 case _:
                     item = item
 
@@ -1117,7 +1125,7 @@ with st.container(border=True):
 
                 pipeline = [
                     match_stage,
-                    {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kuota (Clean)"}}}
+                    {"$group": {"_id": None, "totalQuota": {"$sum": "$Digit Kouta (Clean)"}}}
                 ]
 
                 # Menjalankan pipeline

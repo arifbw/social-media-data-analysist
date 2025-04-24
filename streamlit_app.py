@@ -1266,7 +1266,7 @@ else:
 
         st.html(
             """
-                <img src='https://i.ibb.co.com/Cp19WY9x/mantap.gif' style='width: 100%; border-radius: 0.5rem; pointer-events: none;'/>
+                <img src='https://i.ibb.co.com/1YvXbPXH/mantap.gif' style='width: 100%; border-radius: 0.5rem; pointer-events: none;'/>
             """
         )
         

@@ -561,6 +561,9 @@ if not st.session_state.authentication_status:
     with cols[1]:
         try: 
             authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'🔑 Akses Dashboard', 'Captcha':'Masukan Kode di bawah (Captcha) :'}), captcha=True)
+
+            if st.session_state.authentication_status == False:
+                st.toast("Email & Password Belum Sesuai.")
         except Exception as e:
             st.toast(e)
 else:

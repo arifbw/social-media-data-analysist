@@ -560,7 +560,7 @@ if not st.session_state.authentication_status:
         st.image(image_login, width=450)
     with cols[1]:
         try: 
-            authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username :', 'Password':'Masukan Password :', 'Login':'🔑 Akses Dashboard', 'Captcha':'Masukan Kode di bawah (Captcha) :'}), captcha=True)
+            authenticator.login(fields=dict({'Form name':'Silahkan Login 🔒😎', 'Username':'Masukan Username (*) :', 'Password':'Masukan Password (*) :', 'Login':'🔑 Akses Dashboard', 'Captcha':'Masukan Kode di bawah (Captcha) :'}), captcha=True)
 
             if st.session_state.authentication_status == False:
                 st.toast("Email & Password Belum Sesuai.")

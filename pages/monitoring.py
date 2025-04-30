@@ -1053,6 +1053,10 @@ with st.container(border=True):
             for date in alur_waktu
         ]
 
+        if len(aw) < 2:
+            st.toast("Tanggal Harus memiliki 2 rentang waktu.")
+            st.stop()
+
         tgl_ppt = " s/d ".join(str(x) for x in aw)
         ganti_text_di_ppt(opening_slide, "tanggal_data", f"({ tgl_ppt })")
         
@@ -1130,7 +1134,11 @@ with st.container(border=True):
 
                 # Menjalankan pipeline
                 result = list(collection.aggregate(pipeline))
-                total_quota = result[0]["totalQuota"]
+
+                if len(result) <= 0:
+                    total_quota = 0
+                else:
+                    total_quota = result[0]["totalQuota"]
 
                 col_child = st.columns([2.5,1])
                 
@@ -1206,7 +1214,12 @@ with st.container(border=True):
                     layers=[layer],
                     tooltip=tooltip
                 ))
+        
         top_chart = st.columns(3, gap="small")
+
+        if data_count_in_range <= 0:
+            st.toast("Data Tidak Tersedia, di rentang waktu tsb.")
+            st.stop()
         
         # Top 10 Accounts with Most Followers
         with top_chart[0]:

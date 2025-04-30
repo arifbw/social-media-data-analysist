@@ -1009,7 +1009,7 @@ with st.container(border=True):
         if popover.button("Dashboard (PPT)", icon=":material/animated_images:", use_container_width=True):
             save_ppt()
 
-        if popover.button("Scraping (XLSX)", icon=":material/table:", use_container_width=True):
+        if popover.button("Scraping (XLSX)", icon=":material/table:", use_container_width=True, disabled=True):
             save_excel()
     with col[2]:
         fragment_button_konfigurasi()

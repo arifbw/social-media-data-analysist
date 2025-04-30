@@ -994,7 +994,7 @@ def generate_leaderboard_html(dataframe):
 
 @st.fragment
 def fragment_button_konfigurasi():
-    if st.button("Sort & Filter Data", type="primary", icon=":material/tune:", use_container_width=True):
+    if st.button("Sort & Filter Data", type="primary", icon=":material/tune:", use_container_width=True, disabled=True):
         show_konfig_dashboard()
 
 with st.container(border=True):
